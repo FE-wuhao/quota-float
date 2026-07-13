@@ -19,21 +19,21 @@ Browser preview uses mock data. Real quota reading requires the Tauri desktop ap
 
 ## 下载与安装
 
-- 最新版本：https://github.com/imwushuai-maker/quota-float/releases/latest
+- 最新版本：https://github.com/FE-wuhao/quota-float/releases/latest
 - Windows：下载 `quota-float-windows-unsigned.zip`，解压后运行其中的安装程序。
 - macOS Intel/Apple Silicon：下载 `quota-float-macos-universal-unsigned.zip`，解压后把 `Quota Float.app` 放进“应用程序”。
 
 也可以把下面这句话直接发给 Codex：
 
 ```text
-请安装 https://github.com/imwushuai-maker/quota-float/releases/latest 中适合当前系统的 Quota Float。
+请安装 https://github.com/FE-wuhao/quota-float/releases/latest 中适合当前系统的 Quota Float。
 ```
 
 发布包目前未签名。Windows 可能显示 SmartScreen，macOS 可能提示开发者无法验证；仅在确认下载来源是本仓库后允许运行。
 
 ## Feedback
 
-请通过 https://github.com/imwushuai-maker/quota-float/issues 提交问题。
+请通过 https://github.com/FE-wuhao/quota-float/issues 提交问题。
 
 ## Privacy Boundary
 
