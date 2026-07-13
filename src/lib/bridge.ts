@@ -6,8 +6,8 @@ const mockSnapshot: ProviderSnapshot = {
   provider: "codex",
   displayName: "CODEX",
   plan: "PRO",
-  shortWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 78 * 60_000).toISOString(), windowSeconds: 18_000 },
-  weeklyWindow: { remainingPercent: 42, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  primaryWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  secondaryWindow: null,
   resetCredits: 1,
   resetCreditExpiresAt: [new Date(Date.now() + 9 * 86_400_000).toISOString()],
   updatedAt: new Date().toISOString(),
@@ -63,23 +63,13 @@ export async function closeWidget(): Promise<void> {
   await getCurrentWindow().hide();
 }
 
-export type WidgetMode = "compact" | "detail";
-
-export async function setWidgetMode(mode: WidgetMode): Promise<void> {
-  if (!isTauri()) return;
-  const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("set_widget_mode", { mode });
-}
-
 export async function listenDesktopEvents(handlers: {
   onPreferences: (value: WidgetPreferences) => void;
   onRefresh: () => void;
-  onShowCompact: () => void;
 }): Promise<() => void> {
   if (!isTauri()) return () => undefined;
   const { listen } = await import("@tauri-apps/api/event");
   const unlistenPreferences = await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload));
   const unlistenRefresh = await listen("refresh-requested", handlers.onRefresh);
-  const unlistenShowCompact = await listen("show-compact", handlers.onShowCompact);
-  return () => { unlistenPreferences(); unlistenRefresh(); unlistenShowCompact(); };
+  return () => { unlistenPreferences(); unlistenRefresh(); };
 }

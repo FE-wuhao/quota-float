@@ -12,6 +12,16 @@ export function quotaTier(percent: number | null): "unknown" | "healthy" | "caut
   return "critical";
 }
 
+export function formatWindowLabel(windowSeconds: number, language: Language = "zh-CN"): string {
+  const normalizedLanguage = normalizeLanguage(language);
+  if (Math.abs(windowSeconds - 604_800) <= 60) return normalizedLanguage === "en" ? "Weekly" : "本周";
+  if (windowSeconds > 0 && windowSeconds % 3_600 === 0) {
+    const hours = windowSeconds / 3_600;
+    return normalizedLanguage === "en" ? `${hours}-hour` : `${hours} 小时`;
+  }
+  return normalizedLanguage === "en" ? "Current" : "当前";
+}
+
 export function formatResetTime(value: string | null, now = new Date(), language: Language = "zh-CN"): string {
   const t = copy[normalizeLanguage(language)];
   if (!value) return t.resetTimeUnknown;
@@ -28,8 +38,24 @@ export function formatResetTime(value: string | null, now = new Date(), language
   return t.resetInDays(days, hours % 24);
 }
 
+export function formatCompactResetTime(value: string | null, now = new Date(), language: Language = "zh-CN"): string {
+  if (!value) return "--";
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return "--";
+  const delta = target.getTime() - now.getTime();
+  if (delta <= 0) return language === "en" ? "now" : "更新中";
+  const minutes = Math.ceil(delta / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  if (hours < 24) return `${hours}h${restMinutes ? `${restMinutes}m` : ""}`;
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return language === "en" ? `${days}d${restHours}h` : `${days}天${restHours}h`;
+}
+
 export function needsFastRefresh(snapshot: ProviderSnapshot, now = new Date()): boolean {
-  const reset = snapshot.shortWindow?.resetsAt;
+  const reset = snapshot.primaryWindow?.resetsAt;
   if (!reset) return false;
   const remaining = new Date(reset).getTime() - now.getTime();
   return remaining > -5 * 60_000 && remaining <= 15 * 60_000;

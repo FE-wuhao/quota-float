@@ -270,6 +270,42 @@ fn find_window<'a>(
     None
 }
 
+fn parse_quota_windows(rate_limit: &Value) -> (Option<UsageWindow>, Option<UsageWindow>) {
+    let primary = parse_window(find_window(
+        rate_limit,
+        &[
+            "primary_window",
+            "primaryWindow",
+            "primary",
+            "short_window",
+            "shortWindow",
+            "five_hour_window",
+            "fiveHourWindow",
+            "5h",
+        ],
+        0,
+    ));
+    let secondary = parse_window(find_window(
+        rate_limit,
+        &[
+            "secondary_window",
+            "secondaryWindow",
+            "secondary",
+            "weekly_window",
+            "weeklyWindow",
+            "week_window",
+            "weekWindow",
+            "weekly",
+        ],
+        0,
+    ));
+
+    match primary {
+        Some(window) => (Some(window), secondary),
+        None => (secondary, None),
+    }
+}
+
 fn safe_http_failure(status: reqwest::StatusCode) -> (&'static str, &'static str) {
     match status.as_u16() {
         401 | 403 => ("signed_out", "Codex login expired. Please sign in again."),
@@ -342,36 +378,9 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         .get("rate_limit")
         .or_else(|| usage.get("rateLimit"))
         .unwrap_or(&usage);
-    let short_window = parse_window(find_window(
-        rate_limit,
-        &[
-            "primary_window",
-            "primaryWindow",
-            "short_window",
-            "shortWindow",
-            "five_hour_window",
-            "fiveHourWindow",
-            "5h",
-            "primary",
-        ],
-        18_000,
-    ));
-    let weekly_window = parse_window(find_window(
-        rate_limit,
-        &[
-            "secondary_window",
-            "secondaryWindow",
-            "weekly_window",
-            "weeklyWindow",
-            "week_window",
-            "weekWindow",
-            "weekly",
-            "secondary",
-        ],
-        604_800,
-    ));
-    if short_window.is_none() {
-        return ProviderSnapshot::failure("unavailable", "Quota response is missing the 5h window.");
+    let (primary_window, secondary_window) = parse_quota_windows(rate_limit);
+    if primary_window.is_none() {
+        return ProviderSnapshot::failure("unavailable", "Quota response is missing a usage window.");
     }
 
     let usage_credits = usage
@@ -425,8 +434,8 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         provider: "codex".into(),
         display_name: "CODEX".into(),
         plan: pick_string(&usage, &["plan_type", "planType"]).map(|value| value.to_uppercase()),
-        short_window,
-        weekly_window,
+        primary_window,
+        secondary_window,
         reset_credits,
         reset_credit_expires_at,
         updated_at: chrono::Utc::now().to_rfc3339(),
@@ -521,5 +530,17 @@ mod tests {
                 .unwrap();
         assert_eq!(short.remaining_percent, 51.0);
         assert_eq!(weekly.remaining_percent, 88.0);
+    }
+
+    #[test]
+    fn accepts_a_weekly_primary_window_without_a_secondary_window() {
+        let rate_limit = serde_json::json!({
+            "primary_window": {"used_percent": 2, "limit_window_seconds": 604800}
+        });
+        let (primary, secondary) = parse_quota_windows(&rate_limit);
+        let primary = primary.unwrap();
+        assert_eq!(primary.remaining_percent, 98.0);
+        assert_eq!(primary.window_seconds, 604800);
+        assert!(secondary.is_none());
     }
 }

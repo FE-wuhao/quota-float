@@ -1,12 +1,12 @@
 # Quota Float
 
-适用于 Windows 和 macOS 的 Codex 额度桌面悬浮卡。它读取本机 Codex Desktop 的登录状态，实时显示 5 小时额度、每周额度和重置时间。
+适用于 Windows 和 macOS 的 Codex 额度桌面悬浮卡。它读取本机 Codex Desktop 的登录状态，实时显示服务端返回的额度窗口和重置时间。
 
 ## 功能
 
-- 220×72 紧凑双指标卡，常驻桌面并保持置顶。
-- 单击展开 320×320 完整详情，支持拖动与收起。
-- 菜单栏/系统托盘同步显示 5 小时剩余额度。
+- 112×32 单行指标卡，常驻桌面并保持置顶，显示剩余百分比和紧凑重置倒计时。
+- 支持拖动、托盘刷新和右键菜单；不提供展开详情窗口。
+- 菜单栏/系统托盘同步显示当前主额度窗口的剩余额度。
 - 支持中英文、自动刷新、额度状态和重置机会。
 - 右键提供 Reload 与 Close。
 - 不上传令牌、聊天内容或额度原始响应，不包含遥测。
@@ -71,7 +71,7 @@ npm run tauri dev
 ## Build
 
 ```bash
-npm run tauri build
+npm run package
 ```
 
 On Windows, Tauri may download WiX to create an MSI installer. If WiX download fails, the release executable may still be produced at:

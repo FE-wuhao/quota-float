@@ -1,25 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CompactQuotaCard, QuotaCard } from "./components/QuotaCard";
-import { closeWidget, fetchSnapshots, getPreferences, listenDesktopEvents, reloadWidget, setAlwaysOnTop, setWidgetMode, startDragging, updatePreferences } from "./lib/bridge";
+import { CompactQuotaCard } from "./components/QuotaCard";
+import { closeWidget, fetchSnapshots, getPreferences, listenDesktopEvents, reloadWidget, startDragging } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
-import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
+import { copy, normalizeLanguage } from "./lib/i18n";
 import { mergeSnapshots } from "./lib/snapshots";
 import type { ProviderSnapshot, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
-type ViewMode = "compact" | "detail" | "dragging";
-
 export default function App() {
   const [snapshots, setSnapshots] = useState<ProviderSnapshot[]>([]);
   const [preferences, setPreferences] = useState(DEFAULT_PREFS);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>("compact");
-  const [consumingProviders, setConsumingProviders] = useState<Set<string>>(() => new Set());
-  const [operationError, setOperationError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const failures = useRef(0);
-  const previousPrimary = useRef(new Map<string, number>());
-  const consumptionTimers = useRef(new Map<string, number>());
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
 
@@ -29,34 +22,18 @@ export default function App() {
       const hasFailure = values.some((item) => item.status !== "ok");
       if (hasFailure) failures.current += 1;
       else failures.current = 0;
-      for (const item of values) {
-        const nextPrimary = item.shortWindow?.remainingPercent;
-        const previous = previousPrimary.current.get(item.provider);
-        if (nextPrimary !== undefined && previous !== undefined && nextPrimary < previous) {
-          setConsumingProviders((current) => new Set(current).add(item.provider));
-          const oldTimer = consumptionTimers.current.get(item.provider);
-          if (oldTimer !== undefined) window.clearTimeout(oldTimer);
-          const timer = window.setTimeout(() => {
-            setConsumingProviders((current) => { const next = new Set(current); next.delete(item.provider); return next; });
-            consumptionTimers.current.delete(item.provider);
-          }, 5 * 60_000);
-          consumptionTimers.current.set(item.provider, timer);
-        }
-        if (nextPrimary !== undefined) previousPrimary.current.set(item.provider, nextPrimary);
-      }
       setSnapshots((current) => mergeSnapshots(current, values));
     } catch {
       failures.current += 1;
       setSnapshots((current) => current.length > 0
         ? current.map((item) => ({ ...item, status: "stale", message: "Refresh failed. Please try again later." }))
-        : [{ provider: "codex", displayName: "CODEX", plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable", message: "Quota is temporarily unavailable. It will retry automatically." }]);
+        : [{ provider: "codex", displayName: "CODEX", plan: null, primaryWindow: null, secondaryWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable", message: "Quota is temporarily unavailable. It will retry automatically." }]);
     }
   }, []);
 
   useEffect(() => {
     void refresh(true);
-    void getPreferences().then((value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) })).catch(() => setOperationError("Unable to read settings. Defaults are in use."));
-    return () => { for (const timer of consumptionTimers.current.values()) window.clearTimeout(timer); consumptionTimers.current.clear(); };
+    void getPreferences().then((value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) })).catch(() => undefined);
   }, [refresh]);
 
   useEffect(() => {
@@ -65,10 +42,9 @@ export default function App() {
     void listenDesktopEvents({
       onPreferences: (value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) }),
       onRefresh: () => void refresh(true),
-      onShowCompact: () => { setViewMode("compact"); void setWidgetMode("compact"); },
     }).then((value) => {
       if (cancelled) value(); else cleanup = value;
-    }).catch(() => setOperationError("Desktop event listener failed to start."));
+    }).catch(() => undefined);
     return () => { cancelled = true; cleanup(); };
   }, [refresh]);
 
@@ -114,48 +90,13 @@ export default function App() {
     ? snapshots.find((item) => item.provider === preferences.pinnedProvider) ?? snapshots[0]
     : snapshots[activeIndex % Math.max(1, snapshots.length)];
 
-  const savePreferences = useCallback((next: WidgetPreferences) => {
-    const previous = preferences;
-    setPreferences(next);
-    setOperationError(null);
-    void updatePreferences(next).catch(() => { setPreferences(previous); setOperationError("Settings could not be saved. Previous state restored."); });
-  }, [preferences]);
-
-  const changeMode = useCallback((mode: "compact" | "detail") => {
-    setOperationError(null);
-    void setWidgetMode(mode)
-      .then(() => {
-        setViewMode(mode);
-        if (mode === "detail") void refresh(true);
-      })
-      .catch(() => setOperationError(mode === "detail" ? "Widget expand failed." : "Widget collapse failed."));
-  }, [refresh]);
-
   const content = !current ? (
     <div className="loading-card compact-loading" aria-label={t.loadingQuota}><span /><span /><span /></div>
-  ) : viewMode !== "detail" ? (
+  ) : (
     <CompactQuotaCard
       snapshot={current}
       language={language}
       onDrag={() => startDragging()}
-      onExpand={() => changeMode("detail")}
-      onDraggingChange={(dragging) => setViewMode(dragging ? "dragging" : "compact")}
-    />
-  ) : (
-    <QuotaCard
-      snapshot={current}
-      preferences={preferences}
-      providerCount={snapshots.length}
-      onPrevious={() => setActiveIndex((value) => (value - 1 + snapshots.length) % snapshots.length)}
-      onNext={() => setActiveIndex((value) => (value + 1) % snapshots.length)}
-      onTogglePin={() => savePreferences({ ...preferences, pinnedProvider: preferences.pinnedProvider ? null : current.provider })}
-      onLanguage={() => savePreferences({ ...preferences, language: nextLanguage(language) })}
-      onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) })).catch(() => setOperationError("Always-on-top toggle failed.")); }}
-      onDrag={() => startDragging()}
-      onCollapse={() => changeMode("compact")}
-      onRefresh={() => refresh(true)}
-      isConsuming={consumingProviders.has(current.provider)}
-      notice={operationError}
     />
   );
 

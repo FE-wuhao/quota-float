@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampPercent, formatResetDate, formatResetTime, needsFastRefresh, quotaTier } from "./format";
+import { clampPercent, formatCompactResetTime, formatResetDate, formatResetTime, formatWindowLabel, needsFastRefresh, quotaTier } from "./format";
 
 describe("quota formatting", () => {
   it("clamps untrusted percentages", () => {
@@ -29,12 +29,26 @@ describe("quota formatting", () => {
     expect(formatResetTime("invalid", now, "en")).toBe("Reset time unknown");
   });
 
+  it("formats reset time for the single-line widget", () => {
+    const now = new Date("2026-07-07T00:00:00Z");
+    expect(formatCompactResetTime("2026-07-13T22:00:00Z", now)).toBe("6天22h");
+    expect(formatCompactResetTime("2026-07-07T01:30:00Z", now)).toBe("1h30m");
+    expect(formatCompactResetTime("2026-07-13T22:00:00Z", now, "en")).toBe("6d22h");
+    expect(formatCompactResetTime(null, now)).toBe("--");
+  });
+
   it("accelerates only near a future reset", () => {
     const now = new Date("2026-07-07T00:00:00Z");
-    const snapshot = { provider: "codex", displayName: "CODEX", plan: "PRO", weeklyWindow: null, resetCredits: 0, updatedAt: now.toISOString(), status: "ok", message: null } as const;
-    expect(needsFastRefresh({ ...snapshot, shortWindow: { remainingPercent: 1, resetsAt: "2026-07-07T00:10:00Z", windowSeconds: 18000 } }, now)).toBe(true);
-    expect(needsFastRefresh({ ...snapshot, shortWindow: { remainingPercent: 1, resetsAt: "2026-07-07T01:00:00Z", windowSeconds: 18000 } }, now)).toBe(false);
-    expect(needsFastRefresh({ ...snapshot, shortWindow: { remainingPercent: 1, resetsAt: "2026-07-06T23:58:00Z", windowSeconds: 18000 } }, now)).toBe(true);
+    const snapshot = { provider: "codex", displayName: "CODEX", plan: "PRO", secondaryWindow: null, resetCredits: 0, updatedAt: now.toISOString(), status: "ok", message: null } as const;
+    expect(needsFastRefresh({ ...snapshot, primaryWindow: { remainingPercent: 1, resetsAt: "2026-07-07T00:10:00Z", windowSeconds: 18000 } }, now)).toBe(true);
+    expect(needsFastRefresh({ ...snapshot, primaryWindow: { remainingPercent: 1, resetsAt: "2026-07-07T01:00:00Z", windowSeconds: 18000 } }, now)).toBe(false);
+    expect(needsFastRefresh({ ...snapshot, primaryWindow: { remainingPercent: 1, resetsAt: "2026-07-06T23:58:00Z", windowSeconds: 18000 } }, now)).toBe(true);
+  });
+
+  it("labels quota windows from their returned durations", () => {
+    expect(formatWindowLabel(18_000)).toBe("5 小时");
+    expect(formatWindowLabel(604_800)).toBe("本周");
+    expect(formatWindowLabel(604_800, "en")).toBe("Weekly");
   });
 
   it("formats the weekly reset as a compact date", () => {

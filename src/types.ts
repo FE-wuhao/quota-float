@@ -12,8 +12,8 @@ export interface ProviderSnapshot {
   provider: ProviderId;
   displayName: string;
   plan: string | null;
-  shortWindow: UsageWindow | null;
-  weeklyWindow: UsageWindow | null;
+  primaryWindow: UsageWindow | null;
+  secondaryWindow: UsageWindow | null;
   resetCredits: number | null;
   resetCreditExpiresAt?: string[];
   updatedAt: string;

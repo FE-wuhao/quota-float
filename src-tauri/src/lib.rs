@@ -16,7 +16,7 @@ use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, State, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
-use tauri_plugin_window_state::Builder as WindowStateBuilder;
+use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
 struct AppState {
     client: reqwest::Client,
@@ -27,17 +27,27 @@ struct AppState {
 }
 
 fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
-    let remaining = snapshots
+    let window = snapshots
         .iter()
         .find(|snapshot| snapshot.provider == "codex")
-        .and_then(|snapshot| snapshot.short_window.as_ref())
-        .map(|window| window.remaining_percent.round().clamp(0.0, 100.0) as u32);
+        .and_then(|snapshot| snapshot.primary_window.as_ref());
     if let Some(tray) = app.tray_by_id("main") {
-        let title = remaining
+        let title = window
+            .map(|window| window.remaining_percent.round().clamp(0.0, 100.0) as u32)
             .map(|value| format!("{value}%"))
             .unwrap_or_else(|| "--%".to_string());
-        let tooltip = remaining
-            .map(|value| format!("Codex 5 小时剩余 {value}%"))
+        let tooltip = window
+            .map(|window| {
+                let value = window.remaining_percent.round().clamp(0.0, 100.0) as u32;
+                let label = if window.window_seconds.abs_diff(604_800) <= 60 {
+                    "本周".to_string()
+                } else if window.window_seconds > 0 && window.window_seconds % 3_600 == 0 {
+                    format!("{} 小时", window.window_seconds / 3_600)
+                } else {
+                    "当前窗口".to_string()
+                };
+                format!("Codex {label}额度剩余 {value}%")
+            })
             .unwrap_or_else(|| "Codex 额度暂不可用".to_string());
         let _ = tray.set_title(Some(title));
         let _ = tray.set_tooltip(Some(tooltip));
@@ -182,23 +192,7 @@ fn apply_lock(app: &AppHandle, locked: bool) -> Result<(), String> {
 }
 
 fn reset_widget_to_compact(window: &tauri::WebviewWindow) {
-    let _ = window.set_size(LogicalSize::new(220.0, 72.0));
-    let _ = window.emit("show-compact", ());
-}
-
-#[tauri::command]
-fn set_widget_mode(mode: String, app: AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("widget")
-        .ok_or_else(|| "widget window missing".to_string())?;
-    let size = match mode.as_str() {
-        "compact" => LogicalSize::new(220.0, 72.0),
-        "detail" => LogicalSize::new(320.0, 320.0),
-        _ => return Err("invalid widget mode".to_string()),
-    };
-    window
-        .set_size(size)
-        .map_err(|error| format!("failed to resize widget: {error}"))
+    let _ = window.set_size(LogicalSize::new(112.0, 32.0));
 }
 
 fn show_widget_below_tray(window: &tauri::WebviewWindow, rect: tauri::Rect) {
@@ -228,8 +222,8 @@ fn show_widget_below_tray(window: &tauri::WebviewWindow, rect: tauri::Rect) {
             && rect_y < (origin.y as f64 + size.height as f64)
     });
     let scale = monitor.map(|value| value.scale_factor()).unwrap_or(fallback_scale);
-    let panel_width = 220.0 * scale;
-    let panel_height = 72.0 * scale;
+    let panel_width = 112.0 * scale;
+    let panel_height = 32.0 * scale;
     let mut x = rect_x + rect_width / 2.0 - panel_width / 2.0;
     let mut y = rect_y + rect_height + 6.0 * scale;
     if let Some(monitor) = monitor {
@@ -415,7 +409,12 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             None,
         ))
-        .plugin(WindowStateBuilder::default().build())
+        // The widget has a fixed footprint; only its desktop position should persist.
+        .plugin(
+            WindowStateBuilder::default()
+                .with_state_flags(StateFlags::POSITION)
+                .build(),
+        )
         .setup(|app| {
             let data_dir = app.path().app_config_dir()?;
             let preferences_path = data_dir.join("preferences.json");
@@ -443,6 +442,7 @@ pub fn run() {
                 let _ = apply_lock(app.handle(), true);
             }
             if let Some(window) = app.get_webview_window("widget") {
+                let _ = window.set_size(LogicalSize::new(112.0, 32.0));
                 let _ = window.set_always_on_top(preferences.always_on_top);
             }
             Ok(())
@@ -454,7 +454,6 @@ pub fn run() {
             set_preferences,
             set_widget_locked,
             set_widget_always_on_top,
-            set_widget_mode
         ])
         .on_tray_icon_event(|app, event| {
             if let TrayIconEvent::Click {
@@ -479,8 +478,7 @@ pub fn run() {
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
                     let _ = window.hide();
-                    let _ = window.set_size(LogicalSize::new(220.0, 72.0));
-                    let _ = window.emit("show-compact", ());
+                    let _ = window.set_size(LogicalSize::new(112.0, 32.0));
                 }
                 _ => {}
             }

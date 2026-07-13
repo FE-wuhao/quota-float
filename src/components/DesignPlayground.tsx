@@ -6,8 +6,8 @@ const preview: ProviderSnapshot = {
   provider: "codex",
   displayName: "CODEX",
   plan: "PRO",
-  shortWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 78 * 60_000).toISOString(), windowSeconds: 18_000 },
-  weeklyWindow: { remainingPercent: 42, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  primaryWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  secondaryWindow: null,
   resetCredits: 1,
   resetCreditExpiresAt: [new Date(Date.now() + 9 * 86_400_000).toISOString()],
   updatedAt: new Date().toISOString(),
@@ -71,7 +71,7 @@ export function DesignPlayground() {
   const makePreview = (mode: PreviewMode): ProviderSnapshot => {
     if (mode === "orb") return preview;
     if (typeof mode === "number") {
-      return { ...preview, shortWindow: preview.shortWindow ? { ...preview.shortWindow, remainingPercent: mode } : null };
+      return { ...preview, primaryWindow: preview.primaryWindow ? { ...preview.primaryWindow, remainingPercent: mode } : null };
     }
     if (mode === "stale") {
       return { ...preview, status: "stale", updatedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), message: "Refresh failed. Please try again later." };
@@ -79,8 +79,8 @@ export function DesignPlayground() {
     return {
       ...preview,
       status: mode,
-      shortWindow: null,
-      weeklyWindow: null,
+      primaryWindow: null,
+      secondaryWindow: null,
       resetCredits: null,
       message: mode === "signed_out" ? "Codex sign-in expired. Please sign in again." : "Quota is temporarily unavailable. It will retry in 30 seconds.",
     };
@@ -107,7 +107,7 @@ export function DesignPlayground() {
       <div className="screenshot-stage" style={style}>
         <div className={previewMode === "orb" ? "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
-            ? <CompactQuotaCard snapshot={activePreview} language="en" onDrag={() => {}} onExpand={() => {}} onDraggingChange={() => {}} />
+            ? <CompactQuotaCard snapshot={activePreview} language="en" onDrag={() => {}} />
             : <QuotaCard snapshot={activePreview} preferences={preferences} providerCount={1} onPrevious={() => {}} onNext={() => {}} onTogglePin={() => {}} onLock={() => {}} onLanguage={() => {}} onDrag={() => {}} onCollapse={() => {}} initialShowCreditTip={showCreditTip} />}
         </div>
       </div>
@@ -124,7 +124,7 @@ export function DesignPlayground() {
         </div>
         <div className={previewMode === "orb" ? "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
-            ? <CompactQuotaCard snapshot={activePreview} onDrag={() => {}} onExpand={() => {}} onDraggingChange={() => {}} />
+            ? <CompactQuotaCard snapshot={activePreview} onDrag={() => {}} />
             : <QuotaCard snapshot={activePreview} preferences={preferences} providerCount={1} onPrevious={() => {}} onNext={() => {}} onTogglePin={() => {}} onLock={() => {}} onLanguage={() => {}} onDrag={() => {}} onCollapse={() => {}} />}
         </div>
       </section>

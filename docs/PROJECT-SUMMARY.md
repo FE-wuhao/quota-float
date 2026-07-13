@@ -2,7 +2,7 @@
 
 ## 一句话定位
 
-Quota Float 是一个 Tauri 2 桌面悬浮窗，用本机 Codex Desktop 登录态只读查询 Codex 额度，并以小卡片展示 5 小时额度、每周额度、重置时间、重置机会和会员类型。
+Quota Float 是一个 Tauri 2 桌面悬浮窗，用本机 Codex Desktop 登录态只读查询 Codex 额度，并以小卡片展示服务端返回的额度窗口、重置时间、重置机会和会员类型。
 
 ## 当前技术栈
 
@@ -13,7 +13,7 @@ Quota Float 是一个 Tauri 2 桌面悬浮窗，用本机 Codex Desktop 登录�
 
 ## 主要功能
 
-- 悬浮额度卡片：展示 Codex 5 小时窗口剩余额度、周额度、重置时间和重置机会。
+- 悬浮额度卡片：展示 Codex 当前主/次额度窗口、重置时间和重置机会；单窗口时不显示空的次指标。
 - 桌面行为：无边框、透明、置顶、可拖动、可锁定鼠标穿透、可托盘显示/隐藏/刷新/解锁/退出。
 - 跨平台构建：同一套前端 UI/动效代码输出 Windows unsigned 包和 macOS Universal unsigned 包。
 - 状态兜底：接口失败时保留上次成功数据并标记 stale；登录失效、限流、接口变形会给安全提示。
@@ -23,7 +23,7 @@ Quota Float 是一个 Tauri 2 桌面悬浮窗，用本机 Codex Desktop 登录�
 ## 关键文件
 
 - `src/App.tsx`：前端状态机，负责刷新、退避、stale 处理、消费中提示、轮播与偏好保存。
-- `src/components/QuotaCard.tsx`：悬浮球、展开卡片 UI 与交互按钮。
+- `src/components/QuotaCard.tsx`：单指标悬浮卡与设计预览 UI。
 - `src/lib/bridge.ts`：浏览器 mock 与 Tauri command 桥接。
 - `src/lib/format.ts`：额度百分比、健康档位、重置时间格式化、快刷新判断。
 - `src/lib/snapshots.ts`：新旧 snapshot 合并与失败保留旧数据逻辑。

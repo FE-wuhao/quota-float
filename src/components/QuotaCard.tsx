@@ -1,6 +1,6 @@
 import { ArrowClockwise, ArrowDown, ArrowUp, ClockCounterClockwise, CloudSlash, CornersIn, PushPin, PushPinSlash, SignIn, WarningCircle } from "@phosphor-icons/react";
 import { memo, useMemo, useRef, useState } from "react";
-import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
+import { clampPercent, formatCompactResetTime, formatDateTime, formatResetDate, formatResetTime, formatWindowLabel, quotaTier } from "../lib/format";
 import { exceedsDragThreshold, type PointerOrigin } from "../lib/gesture";
 import { copy, normalizeLanguage } from "../lib/i18n";
 import type { Language, ProviderSnapshot, WidgetPreferences } from "../types";
@@ -38,7 +38,7 @@ function localizedBackendMessage(message: string | null, language: Language): st
   if (normalized.includes("rate limited")) return "请求过于频繁，将稍后自动重试。";
   if (normalized.includes("network")) return "网络不可用，将自动重试。";
   if (normalized.includes("format")) return "额度响应格式已变化。";
-  if (normalized.includes("missing the 5h")) return "额度响应缺少 5 小时窗口。";
+  if (normalized.includes("missing a usage window")) return "额度响应缺少可用窗口。";
   if (normalized.includes("refresh is already running")) return "额度正在刷新，请稍候。";
   return message;
 }
@@ -62,8 +62,12 @@ export const QuotaCard = memo(function QuotaCard({
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
-  const primary = snapshot.shortWindow ? clampPercent(snapshot.shortWindow.remainingPercent) : null;
-  const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
+  const primaryWindow = snapshot.primaryWindow;
+  const secondaryWindow = snapshot.secondaryWindow;
+  const primary = primaryWindow ? clampPercent(primaryWindow.remainingPercent) : null;
+  const secondary = secondaryWindow ? clampPercent(secondaryWindow.remainingPercent) : null;
+  const primaryLabel = formatWindowLabel(primaryWindow?.windowSeconds ?? 0, language);
+  const secondaryLabel = formatWindowLabel(secondaryWindow?.windowSeconds ?? 0, language);
   const staleAge = Date.now() - new Date(snapshot.updatedAt).getTime();
   const staleExpired = snapshot.status === "stale" && staleAge > 30 * 60_000;
   const available = snapshot.status === "ok" || (snapshot.status === "stale" && !staleExpired);
@@ -88,12 +92,12 @@ export const QuotaCard = memo(function QuotaCard({
       className={`quota-card quota-card--${snapshot.status} quota-card--${tier}`}
     >
       <div className="aurora" aria-hidden="true" />
-      <span className="sr-only" aria-live="polite">{available && primary !== null ? t.availableLabel(primary) : message}</span>
+      <span className="sr-only" aria-live="polite">{available && primary !== null ? t.availableLabel(primaryLabel, primary) : message}</span>
       {notice ? <p className="operation-notice" role="status">{notice}</p> : null}
       <header className="card-header" onPointerDown={(event) => { if (event.button === 0) void onDrag(); }}>
         <div>
           <p className="eyebrow">{snapshot.displayName} · {snapshot.plan ?? t.accountFallback}</p>
-          {snapshot.status !== "stale" ? <p className="updated">{t.shortRemaining}</p> : null}
+          {snapshot.status !== "stale" ? <p className="updated">{t.windowRemaining(primaryLabel)}</p> : null}
         </div>
         {!preferences.locked ? (
           <nav className="card-actions" aria-label={t.controls} onPointerDown={(event) => event.stopPropagation()}>
@@ -111,17 +115,17 @@ export const QuotaCard = memo(function QuotaCard({
 
       {available && primary !== null ? (
         <>
-          <section className="primary-metric" aria-label={t.availableLabel(primary)}>
+          <section className="primary-metric" aria-label={t.availableLabel(primaryLabel, primary)}>
             <span>{primary}</span><small>%</small>
           </section>
-          <div className="progress" role="progressbar" aria-label={t.availableLabel(primary)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={primary}>
+          <div className="progress" role="progressbar" aria-label={t.availableLabel(primaryLabel, primary)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={primary}>
             <span style={{ width: `${primary}%` }} />
           </div>
-          <p className="reset-time">{formatResetTime(snapshot.shortWindow?.resetsAt ?? null, new Date(), language)}</p>
+          <p className="reset-time">{formatResetTime(primaryWindow?.resetsAt ?? null, new Date(), language)}</p>
           <footer className="card-footer">
             <div className="weekly-metric">
-              <p>{t.weeklyUntil(formatResetDate(snapshot.weeklyWindow?.resetsAt ?? null, language))}</p>
-              <strong>{weekly ?? "--"}<small>{weekly === null ? "" : "%"}</small></strong>
+              <p>{t.windowUntil(secondaryWindow ? secondaryLabel : primaryLabel, formatResetDate((secondaryWindow ?? primaryWindow)?.resetsAt ?? null, language))}</p>
+              {secondaryWindow ? <strong>{secondary}<small>{secondary === null ? "" : "%"}</small></strong> : null}
               <div className="reset-credit-row" onMouseDown={(event) => event.stopPropagation()}>
                 <span>{snapshot.resetCredits === null ? t.resetCreditUnknown : t.resetCredits(snapshot.resetCredits)}</span>
                 {snapshot.resetCredits !== null && snapshot.resetCredits > 0 ? (
@@ -157,28 +161,27 @@ export const QuotaCard = memo(function QuotaCard({
 export const CompactQuotaCard = memo(function CompactQuotaCard({
   snapshot,
   onDrag,
-  onExpand,
-  onDraggingChange,
   language = "zh-CN",
-}: Pick<Props, "snapshot" | "onDrag"> & {
-  onExpand: () => void;
-  onDraggingChange: (dragging: boolean) => void;
-  language?: Language;
-}) {
+}: Pick<Props, "snapshot" | "onDrag"> & { language?: Language }) {
   const pointerOrigin = useRef<PointerOrigin | null>(null);
   const dragging = useRef(false);
   const activeLanguage = normalizeLanguage(language);
   const t = copy[activeLanguage];
-  const primary = snapshot.shortWindow ? clampPercent(snapshot.shortWindow.remainingPercent) : null;
-  const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
+  const primaryWindow = snapshot.primaryWindow;
+  const primary = primaryWindow ? clampPercent(primaryWindow.remainingPercent) : null;
+  const primaryLabel = formatWindowLabel(primaryWindow?.windowSeconds ?? 0, activeLanguage);
+  const resetLabel = formatResetTime(primaryWindow?.resetsAt ?? null, new Date(), activeLanguage);
+  const compactResetLabel = formatCompactResetTime(primaryWindow?.resetsAt ?? null, new Date(), activeLanguage);
   const tier = quotaTier(primary);
   const available = (snapshot.status === "ok" || snapshot.status === "stale") && primary !== null;
   const statusLabel = snapshot.status === "signed_out" ? t.notSignedIn : t.unavailableStatus;
+  const accessibleLabel = available
+    ? `${t.availableLabel(primaryLabel, primary)}，${resetLabel}`
+    : localizedBackendMessage(snapshot.message, activeLanguage) ?? t.unavailableStatus;
 
   const resetGesture = () => {
     pointerOrigin.current = null;
     dragging.current = false;
-    onDraggingChange(false);
   };
 
   return (
@@ -194,39 +197,31 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
         const origin = pointerOrigin.current;
         if (!origin || dragging.current || !exceedsDragThreshold(origin, event.screenX, event.screenY)) return;
         dragging.current = true;
-        onDraggingChange(true);
         void onDrag();
       }}
       onPointerUp={(event) => {
         if (!pointerOrigin.current) return;
-        const shouldExpand = !dragging.current;
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         resetGesture();
-        if (shouldExpand) onExpand();
       }}
       onPointerCancel={resetGesture}
-      aria-label={available ? t.availableLabel(primary) : localizedBackendMessage(snapshot.message, activeLanguage) ?? t.unavailableStatus}
+      aria-label={accessibleLabel}
+      title={accessibleLabel}
     >
       <div className="aurora" aria-hidden="true" />
       {available ? (
         <>
-          <section className="compact-primary">
-            <div className="compact-label-row"><span>{activeLanguage === "en" ? "5H" : "5 小时"}</span><i className={`compact-status compact-status--${snapshot.status}`} /></div>
+          <section className="compact-primary compact-primary--single">
+            <i className={`compact-status compact-status--${snapshot.status}`} aria-hidden="true" />
             <strong>{primary}<small>%</small></strong>
-            <div className="compact-progress"><span style={{ width: `${primary}%` }} /></div>
-            <p>{formatResetTime(snapshot.shortWindow?.resetsAt ?? null, new Date(), activeLanguage)}</p>
-          </section>
-          <span className="compact-divider" aria-hidden="true" />
-          <section className="compact-weekly">
-            <span>{t.weeklyRemaining}</span>
-            <strong>{weekly ?? "--"}<small>{weekly === null ? "" : "%"}</small></strong>
-            <p>{activeLanguage === "en" ? "until" : "至"} {formatResetDate(snapshot.weeklyWindow?.resetsAt ?? null, activeLanguage)}</p>
+            <span className="compact-separator" aria-hidden="true">·</span>
+            <span className="compact-reset-time">{compactResetLabel}</span>
           </section>
         </>
       ) : (
         <section className="compact-unavailable">
           <StatusIcon status={snapshot.status} />
-          <div><strong>{statusLabel}</strong><p>{activeLanguage === "en" ? "Click for details" : "点击查看详情"}</p></div>
+          <div><strong>{statusLabel}</strong></div>
         </section>
       )}
     </main>
