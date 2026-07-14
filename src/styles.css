@@ -116,7 +116,7 @@ button { font: inherit; }
 @keyframes pulse { 50% { opacity: .28; transform: translateY(-4px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .aurora, .loading-card span, .usage-indicator--active i { animation: none; }
+  .aurora, .loading-card span, .usage-indicator--active i, .compact-refresh-button--active svg { animation: none; }
   .progress span { transition: none; }
 }
 
@@ -147,7 +147,7 @@ button { font: inherit; }
 .compact-quota-card:active { cursor: grabbing; }
 .compact-quota-card .aurora { display: none; }
 .compact-primary { width: 130px; padding: 9px 12px 7px 14px; }
-.compact-primary--single { width: 100%; height: 100%; display: flex; align-items: center; gap: 4px; padding: 0 7px; }
+.compact-primary--single { min-width: 0; height: 100%; display: flex; flex: 1; align-items: center; gap: 4px; padding: 0 0 0 7px; }
 .compact-label-row { display: flex; align-items: center; gap: 5px; color: rgba(17,20,27,.58); font-size: 9px; font-weight: 720; letter-spacing: .08em; }
 .compact-reset-time { color: #b9c0ca; font-size: 9px; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
 .compact-status { width: 5px; height: 5px; border-radius: 50%; background: #63e98a; box-shadow: 0 0 5px rgba(99,233,138,.75); }
@@ -163,10 +163,17 @@ button { font: inherit; }
 .compact-weekly { flex: 1; padding: 10px 10px 7px 12px; }
 .compact-weekly > span { color: rgba(17,20,27,.58); font-size: 9px; font-weight: 650; }
 .compact-weekly strong { margin-top: 5px; font-size: 21px; font-weight: 520; }
-.compact-unavailable { width: 100%; display: flex; align-items: center; gap: 6px; padding: 0 9px; }
+.compact-unavailable { min-width: 0; display: flex; flex: 1; align-items: center; gap: 6px; padding: 0 0 0 9px; }
 .compact-unavailable > svg { width: 14px; height: 14px; color: #ff7653; }
 .compact-unavailable strong { display: block; overflow: hidden; color: #f7f8fa; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .compact-unavailable p { margin: 4px 0 0; color: rgba(17,20,27,.5); font-size: 9px; }
+.compact-refresh-button { width: 22px; height: 30px; flex: 0 0 22px; display: grid; place-items: center; padding: 0; border: 0; border-left: 1px solid rgba(255,255,255,.09); color: #aeb6c2; background: transparent; cursor: pointer; }
+.compact-refresh-button:hover { color: #f7f8fa; background: rgba(255,255,255,.07); }
+.compact-refresh-button:active { background: rgba(255,255,255,.11); }
+.compact-refresh-button:disabled { cursor: default; }
+.compact-refresh-button svg { width: 12px; height: 12px; }
+.compact-refresh-button--active svg { animation: compact-refresh-spin .7s linear infinite; }
+@keyframes compact-refresh-spin { to { transform: rotate(360deg); } }
 .compact-loading { min-width: 112px; min-height: 32px; border-radius: 10px; }
 
 .design-workbench { width: 100vw; min-height: 100vh; display: grid; grid-template-columns: minmax(480px, 1fr) 390px; color: #17191f; background: #f3f4f6; overflow: auto; }

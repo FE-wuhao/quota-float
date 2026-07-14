@@ -12,6 +12,7 @@ export default function App() {
   const [preferences, setPreferences] = useState(DEFAULT_PREFS);
   const [activeIndex, setActiveIndex] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const failures = useRef(0);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
@@ -90,6 +91,16 @@ export default function App() {
     ? snapshots.find((item) => item.provider === preferences.pinnedProvider) ?? snapshots[0]
     : snapshots[activeIndex % Math.max(1, snapshots.length)];
 
+  const refreshManually = useCallback(async () => {
+    if (isManualRefreshing) return;
+    setIsManualRefreshing(true);
+    try {
+      await refresh(true);
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [isManualRefreshing, refresh]);
+
   const content = !current ? (
     <div className="loading-card compact-loading" aria-label={t.loadingQuota}><span /><span /><span /></div>
   ) : (
@@ -97,6 +108,8 @@ export default function App() {
       snapshot={current}
       language={language}
       onDrag={() => startDragging()}
+      onRefresh={() => void refreshManually()}
+      isRefreshing={isManualRefreshing}
     />
   );
 

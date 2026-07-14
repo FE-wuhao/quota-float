@@ -18,6 +18,7 @@ interface Props {
   onDrag: () => void;
   onCollapse: () => void;
   onRefresh?: () => void;
+  isRefreshing?: boolean;
   isConsuming?: boolean;
   notice?: string | null;
   initialShowCreditTip?: boolean;
@@ -161,8 +162,10 @@ export const QuotaCard = memo(function QuotaCard({
 export const CompactQuotaCard = memo(function CompactQuotaCard({
   snapshot,
   onDrag,
+  onRefresh,
+  isRefreshing = false,
   language = "zh-CN",
-}: Pick<Props, "snapshot" | "onDrag"> & { language?: Language }) {
+}: Pick<Props, "snapshot" | "onDrag" | "onRefresh" | "isRefreshing"> & { language?: Language }) {
   const pointerOrigin = useRef<PointerOrigin | null>(null);
   const dragging = useRef(false);
   const activeLanguage = normalizeLanguage(language);
@@ -224,6 +227,20 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
           <div><strong>{statusLabel}</strong></div>
         </section>
       )}
+      <button
+        type="button"
+        className={`compact-refresh-button${isRefreshing ? " compact-refresh-button--active" : ""}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onRefresh?.();
+        }}
+        disabled={!onRefresh || isRefreshing}
+        aria-label={t.refreshQuota}
+        title={t.refreshQuota}
+      >
+        <ArrowClockwise aria-hidden="true" />
+      </button>
     </main>
   );
 });
