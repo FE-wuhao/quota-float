@@ -77,12 +77,12 @@ export function SettingsPage() {
               <input type="url" value={settings.baseUrl} placeholder="https://your-sub2api.example.com" autoComplete="off" spellCheck={false} maxLength={2048} onChange={(event) => update({ baseUrl: event.target.value })} />
               <small>填写服务根地址或 /v1 地址。</small>
             </label>
-            <label className="settings-field">API Key
+            <label className="settings-field"><span>API Key {canReuseKey ? <span className="settings-key-saved">已保存</span> : null}</span>
               <div className="settings-key-input">
-                <input type={showKey ? "text" : "password"} value={apiKey} placeholder={canReuseKey ? "已保存 Key，留空保留" : "输入此服务的 API Key"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={8192} onChange={(event) => { setApiKey(event.target.value); setNotice(null); setPreview(null); }} />
-                <button type="button" aria-label={showKey ? "隐藏 API Key" : "显示 API Key"} aria-pressed={showKey} onClick={() => setShowKey((value) => !value)}>{showKey ? "隐藏" : "显示"}</button>
+                <input type={showKey ? "text" : "password"} value={apiKey} placeholder={canReuseKey ? "••••••••（已保存，无需重新填写）" : "输入此服务的 API Key"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} maxLength={8192} onChange={(event) => { setApiKey(event.target.value); setNotice(null); setPreview(null); }} />
+                <button type="button" disabled={!apiKey} aria-label={showKey ? "隐藏新输入的 API Key" : "显示新输入的 API Key"} aria-pressed={showKey} onClick={() => setShowKey((value) => !value)}>{showKey ? "隐藏" : "显示"}</button>
               </div>
-              <small>Key 保存在本机系统凭据库。更换服务地址时需重新填写。</small>
+              <small>{canReuseKey ? "此服务的 Key 已持久保存，切换来源或重启后仍可使用。留空保留，输入新 Key 可替换。" : "Key 保存在本机系统凭据库。更换服务地址时需重新填写。"}</small>
             </label>
             <label className="settings-field">展示额度
               <select value={settings.quotaWindow} onChange={(event) => update({ quotaWindow: event.target.value as QuotaSettings["quotaWindow"] })}>

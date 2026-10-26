@@ -29,6 +29,8 @@ button { font: inherit; }
 .settings-field small { color: #94a0b2; font-size: 11px; font-weight: 400; line-height: 1.6; }
 .settings-key-input { display: flex; align-items: center; gap: 8px; }
 .settings-key-input input { flex: 1; }
+.settings-key-saved { margin-left: 6px; color: #89d9b0; font-size: 11px; font-weight: 400; }
+.settings-key-input button:disabled { opacity: .5; cursor: default; }
 .settings-page button { min-height: 38px; padding: 0 14px; border: 1px solid #475368; border-radius: 8px; background: #2b3442; color: #e4ebf6; font-size: 12px; cursor: pointer; }
 .settings-page button:hover { background: #364357; }
 .settings-page fieldset:disabled { opacity: .65; }
