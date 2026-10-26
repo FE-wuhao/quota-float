@@ -1,4 +1,4 @@
-export type ProviderId = "codex" | "claude";
+export type ProviderId = "codex" | "claude" | "sub2api";
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 
@@ -19,7 +19,27 @@ export interface ProviderSnapshot {
   updatedAt: string;
   status: SnapshotStatus;
   message: string | null;
+  scopeId?: number;
+  quotaDetails?: QuotaDetail[];
+  allowStale?: boolean;
 }
+
+export interface QuotaDetail {
+  window: "total" | "5h" | "1d" | "7d";
+  limit: number;
+  used: number;
+  remaining: number;
+  unit: string;
+  resetsAt: string | null;
+}
+
+export interface QuotaSettings {
+  source: "sub2api" | "codex";
+  baseUrl: string;
+  quotaWindow: "auto" | QuotaDetail["window"];
+}
+
+export interface QuotaSettingsView extends QuotaSettings { hasKey: boolean }
 
 export interface WidgetPreferences {
   locked: boolean;

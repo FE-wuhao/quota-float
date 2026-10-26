@@ -1,15 +1,19 @@
 mod codex;
 mod models;
+mod sub2api;
 
 use std::{
     fs,
     io::Write,
     path::PathBuf,
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
     time::{Duration, Instant},
 };
 
-use models::{ProviderSnapshot, WidgetPreferences};
+use models::{ProviderSnapshot, QuotaSettings, QuotaSettingsView, WidgetPreferences};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -24,12 +28,14 @@ struct AppState {
     preferences_path: PathBuf,
     fetch_lock: tokio::sync::Mutex<()>,
     snapshot_cache: Mutex<Option<(Instant, Vec<ProviderSnapshot>)>>,
+    quota_settings: Mutex<QuotaSettings>,
+    quota_settings_path: PathBuf,
+    scope_id: AtomicU64,
 }
 
 fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
     let window = snapshots
-        .iter()
-        .find(|snapshot| snapshot.provider == "codex")
+        .first()
         .and_then(|snapshot| snapshot.primary_window.as_ref());
     if let Some(tray) = app.tray_by_id("main") {
         let title = window
@@ -46,9 +52,13 @@ fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
                 } else {
                     "当前窗口".to_string()
                 };
-                format!("Codex {label}额度剩余 {value}%")
+                let name = snapshots
+                    .first()
+                    .map(|s| s.display_name.as_str())
+                    .unwrap_or("Quota Float");
+                format!("{name} {label}额度剩余 {value}%")
             })
-            .unwrap_or_else(|| "Codex 额度暂不可用".to_string());
+            .unwrap_or_else(|| "额度暂不可用；右键打开设置".to_string());
         let _ = tray.set_title(Some(title));
         let _ = tray.set_tooltip(Some(tooltip));
     }
@@ -56,11 +66,189 @@ fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
 
 async fn fetch_snapshots_uncached(state: &State<'_, AppState>) -> Vec<ProviderSnapshot> {
     let _guard = state.fetch_lock.lock().await;
-    let values = vec![codex::fetch_snapshot(&state.client).await];
+    let values = fetch_current_source(state).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
         *cache = Some((Instant::now(), values.clone()));
     }
     values
+}
+
+async fn fetch_current_source(state: &AppState) -> Vec<ProviderSnapshot> {
+    let settings = state
+        .quota_settings
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    let mut snapshot = if settings.source == "codex" {
+        codex::fetch_snapshot(&state.client).await
+    } else {
+        sub2api::fetch_snapshot(&state.client, &settings, None).await
+    };
+    snapshot.scope_id = state.scope_id.load(Ordering::SeqCst);
+    vec![snapshot]
+}
+
+fn load_quota_settings(path: &PathBuf) -> QuotaSettings {
+    [path.clone(), path.with_extension("json.bak")]
+        .iter()
+        .find_map(|candidate| {
+            fs::read_to_string(candidate)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<QuotaSettings>(&raw).ok())
+                .and_then(|settings| sub2api::normalize_settings(settings).ok())
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn get_quota_settings(state: State<'_, AppState>) -> Result<QuotaSettingsView, String> {
+    let settings = state
+        .quota_settings
+        .lock()
+        .map_err(|_| "无法读取设置。".to_string())?
+        .clone();
+    let has_key = sub2api::load_key(&settings.base_url)?.is_some();
+    Ok(QuotaSettingsView { settings, has_key })
+}
+
+fn resolve_settings_key(
+    state: &AppState,
+    settings: &QuotaSettings,
+    key: &str,
+) -> Result<Option<String>, String> {
+    if settings.source == "codex" {
+        return Ok(None);
+    }
+    let key = key.trim();
+    if !key.is_empty() {
+        if key.len() > 8192 || key.chars().any(char::is_whitespace) || !key.is_ascii() {
+            return Err("API Key 格式无效，请检查是否粘贴了额外内容。".into());
+        }
+        return Ok(Some(key.to_string()));
+    }
+    let previous = state
+        .quota_settings
+        .lock()
+        .map_err(|_| "无法读取设置。".to_string())?
+        .clone();
+    if previous.base_url != settings.base_url {
+        return Err("更换服务地址时，请重新填写对应的 API Key。".into());
+    }
+    sub2api::load_key(&settings.base_url)?
+        .map(Some)
+        .ok_or_else(|| "请填写 API Key。".into())
+}
+
+#[tauri::command]
+async fn check_quota_settings(
+    settings: QuotaSettings,
+    api_key: String,
+    state: State<'_, AppState>,
+) -> Result<ProviderSnapshot, String> {
+    let settings = sub2api::normalize_settings(settings)?;
+    let key = resolve_settings_key(&state, &settings, &api_key)?;
+    Ok(if settings.source == "codex" {
+        codex::fetch_snapshot(&state.client).await
+    } else {
+        sub2api::fetch_snapshot(&state.client, &settings, key).await
+    })
+}
+
+#[tauri::command]
+async fn save_quota_settings(
+    settings: QuotaSettings,
+    api_key: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let settings = sub2api::normalize_settings(settings)?;
+    // Wait for existing reads before changing credentials and invalidating their cache.
+    let _guard = state.fetch_lock.lock().await;
+    let key = resolve_settings_key(&state, &settings, &api_key)?;
+    let old_key = if settings.source == "sub2api" {
+        sub2api::load_key(&settings.base_url)?
+    } else {
+        None
+    };
+    if let Some(key) = &key {
+        sub2api::credential(&settings.base_url)?
+            .set_password(key)
+            .map_err(|_| "无法将 API Key 保存到系统凭据库。".to_string())?;
+    }
+    if let Err(error) = persist_preferences(&state.quota_settings_path, &settings) {
+        if key.is_some() {
+            if let Ok(entry) = sub2api::credential(&settings.base_url) {
+                match old_key {
+                    Some(value) => {
+                        let _ = entry.set_password(&value);
+                    }
+                    None => {
+                        let _ = entry.delete_credential();
+                    }
+                }
+            }
+        }
+        return Err(error);
+    }
+    *state
+        .quota_settings
+        .lock()
+        .map_err(|_| "无法保存设置。".to_string())? = settings;
+    state.scope_id.fetch_add(1, Ordering::SeqCst);
+    *state
+        .snapshot_cache
+        .lock()
+        .map_err(|_| "无法清除额度缓存。".to_string())? = None;
+    update_tray_quota(&app, &[]);
+    let _ = app.emit_to("widget", "quota-settings-changed", ());
+    Ok(())
+}
+
+fn show_settings_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.unminimize();
+        window
+            .show()
+            .map_err(|_| "无法显示设置窗口。".to_string())?;
+        return window.set_focus().map_err(|_| "无法打开设置窗口。".into());
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "settings",
+        tauri::WebviewUrl::App("index.html?settings".into()),
+    )
+    .title("Quota Float · 设置")
+    .inner_size(480.0, 640.0)
+    .min_inner_size(420.0, 560.0)
+    .resizable(true)
+    .center()
+    .build()
+    .map_err(|_| "无法创建设置窗口。".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_settings(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || show_settings_window(app))
+        .await
+        .map_err(|_| "无法打开设置窗口。".to_string())?
+}
+
+#[tauri::command]
+fn show_widget_menu(app: AppHandle) -> Result<(), String> {
+    let window = app.get_webview_window("widget").ok_or("悬浮窗不可用。")?;
+    let settings = MenuItem::with_id(&app, "settings", "设置 / Settings…", true, None::<&str>);
+    let reload = MenuItem::with_id(&app, "reload", "Reload", true, None::<&str>);
+    let hide = MenuItem::with_id(&app, "hide", "Close", true, None::<&str>);
+    let (settings, reload, hide) = (
+        settings.map_err(|_| "菜单不可用。")?,
+        reload.map_err(|_| "菜单不可用。")?,
+        hide.map_err(|_| "菜单不可用。")?,
+    );
+    let menu = Menu::with_items(&app, &[&settings, &reload, &hide]).map_err(|_| "菜单不可用。")?;
+    window
+        .popup_menu(&menu)
+        .map_err(|_| "无法打开菜单。".into())
 }
 
 fn load_preferences(path: &PathBuf) -> WidgetPreferences {
@@ -80,7 +268,7 @@ fn load_preferences(path: &PathBuf) -> WidgetPreferences {
     WidgetPreferences::default()
 }
 
-fn persist_preferences(path: &PathBuf, value: &WidgetPreferences) -> Result<(), String> {
+fn persist_preferences<T: serde::Serialize>(path: &PathBuf, value: &T) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| "failed to create settings directory".to_string())?;
     }
@@ -141,7 +329,7 @@ async fn get_snapshots(
             }
         }
     }
-    let values = vec![codex::fetch_snapshot(&state.client).await];
+    let values = fetch_current_source(&state).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
         *cache = Some((Instant::now(), values.clone()));
     }
@@ -296,6 +484,7 @@ fn set_widget_always_on_top(
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let settings = MenuItem::with_id(app, "settings", "设置 / Settings…", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "Show / Hide", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
     let unlock = MenuItem::with_id(app, "unlock", "Unlock widget", true, None::<&str>)?;
@@ -311,7 +500,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &refresh, &unlock, &pin, &language, &autostart, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &settings, &refresh, &unlock, &pin, &language, &autostart, &quit])?;
     let mut builder = TrayIconBuilder::with_id("main")
         .menu(&menu)
         .tooltip("Codex 额度加载中")
@@ -342,7 +531,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 if let Some(state) = app.try_state::<AppState>() {
                     if let Ok(mut prefs) = state.preferences.lock() {
                         prefs.locked = false;
-                        let _ = persist_preferences(&state.preferences_path, &prefs);
+                        let _ = persist_preferences(&state.preferences_path, &*prefs);
                         let _ = app.emit_to("widget", "preferences-changed", prefs.clone());
                     }
                 }
@@ -355,7 +544,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                         } else {
                             Some("codex".into())
                         };
-                        let _ = persist_preferences(&state.preferences_path, &prefs);
+                        let _ = persist_preferences(&state.preferences_path, &*prefs);
                         let _ = app.emit_to("widget", "preferences-changed", prefs.clone());
                     }
                 }
@@ -399,6 +588,17 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "settings" => {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move { let _ = open_settings(handle).await; });
+            }
+            "reload" => { let _ = app.emit_to("widget", "reload-requested", ()); }
+            "hide" => {
+                if let Some(window) = app.get_webview_window("widget") { let _ = window.hide(); }
+            }
+            _ => {}
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("widget") {
                 let _ = window.show();
@@ -419,6 +619,9 @@ pub fn run() {
             let data_dir = app.path().app_config_dir()?;
             let preferences_path = data_dir.join("preferences.json");
             let preferences = load_preferences(&preferences_path);
+            let quota_settings_path = data_dir.join("quota-settings.json");
+            let needs_setup = !quota_settings_path.exists();
+            let quota_settings = load_quota_settings(&quota_settings_path);
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(12))
                 .redirect(reqwest::redirect::Policy::none())
@@ -431,6 +634,9 @@ pub fn run() {
                 preferences_path,
                 fetch_lock: tokio::sync::Mutex::new(()),
                 snapshot_cache: Mutex::new(None),
+                quota_settings: Mutex::new(quota_settings),
+                quota_settings_path,
+                scope_id: AtomicU64::new(1),
             });
             if setup_tray(app).is_err() {
                 eprintln!("tray setup failed; enabling taskbar fallback");
@@ -445,6 +651,10 @@ pub fn run() {
                 let _ = window.set_size(LogicalSize::new(112.0, 32.0));
                 let _ = window.set_always_on_top(preferences.always_on_top);
             }
+            if needs_setup {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move { let _ = open_settings(handle).await; });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -454,6 +664,11 @@ pub fn run() {
             set_preferences,
             set_widget_locked,
             set_widget_always_on_top,
+            get_quota_settings,
+            save_quota_settings,
+            check_quota_settings,
+            open_settings,
+            show_widget_menu,
         ])
         .on_tray_icon_event(|app, event| {
             if let TrayIconEvent::Click {
@@ -476,9 +691,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
-                    api.prevent_close();
-                    let _ = window.hide();
-                    let _ = window.set_size(LogicalSize::new(112.0, 32.0));
+                    if window.label() == "widget" {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        let _ = window.set_size(LogicalSize::new(112.0, 32.0));
+                    }
                 }
                 _ => {}
             }

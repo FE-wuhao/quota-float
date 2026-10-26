@@ -176,10 +176,15 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
   const resetLabel = formatResetTime(primaryWindow?.resetsAt ?? null, new Date(), activeLanguage);
   const compactResetLabel = formatCompactResetTime(primaryWindow?.resetsAt ?? null, new Date(), activeLanguage);
   const tier = quotaTier(primary);
-  const available = (snapshot.status === "ok" || snapshot.status === "stale") && primary !== null;
-  const statusLabel = snapshot.status === "signed_out" ? t.notSignedIn : t.unavailableStatus;
+  const staleExpired = snapshot.status === "stale" && Date.now() - new Date(snapshot.updatedAt).getTime() > 30 * 60_000;
+  const available = (snapshot.status === "ok" || (snapshot.status === "stale" && !staleExpired)) && primary !== null;
+  const statusLabel = snapshot.provider === "sub2api" && snapshot.status === "signed_out" ? "请设置 Key" : snapshot.status === "signed_out" ? t.notSignedIn : t.unavailableStatus;
+  const detailLabels: Record<string, string> = activeLanguage === "en"
+    ? { total: "Total", "5h": "5-hour", "1d": "Daily", "7d": "Weekly" }
+    : { total: "总额度", "5h": "5 小时", "1d": "每日", "7d": "每周" };
+  const details = (snapshot.quotaDetails ?? []).map((detail) => `${detailLabels[detail.window]}：${detail.remaining.toFixed(2)} / ${detail.limit.toFixed(2)} ${detail.unit}`);
   const accessibleLabel = available
-    ? `${t.availableLabel(primaryLabel, primary)}，${resetLabel}`
+    ? `${snapshot.provider === "sub2api" ? "API Key · " : ""}${t.availableLabel(primaryLabel, primary)}，${primaryWindow?.windowSeconds === 0 ? (activeLanguage === "en" ? "No automatic reset" : "总额度无自动重置") : resetLabel}${details.length ? `\n${details.join("\n")}` : ""}${snapshot.status === "stale" ? `\n${t.dataStale}` : ""}${snapshot.message ? `\n${snapshot.message}` : ""}`
     : localizedBackendMessage(snapshot.message, activeLanguage) ?? t.unavailableStatus;
 
   const resetGesture = () => {
@@ -218,7 +223,7 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
             <i className={`compact-status compact-status--${snapshot.status}`} aria-hidden="true" />
             <strong>{primary}<small>%</small></strong>
             <span className="compact-separator" aria-hidden="true">·</span>
-            <span className="compact-reset-time">{compactResetLabel}</span>
+            <span className="compact-reset-time">{snapshot.provider === "sub2api" && primaryWindow?.windowSeconds === 0 ? (activeLanguage === "en" ? "total" : "总额") : compactResetLabel}</span>
           </section>
         </>
       ) : (

@@ -1,4 +1,4 @@
-import type { ProviderSnapshot, WidgetPreferences } from "../types";
+import type { ProviderSnapshot, QuotaSettings, QuotaSettingsView, WidgetPreferences } from "../types";
 
 const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
 
@@ -16,6 +16,42 @@ const mockSnapshot: ProviderSnapshot = {
 };
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
+
+let previewSettings: QuotaSettingsView = { source: "sub2api", baseUrl: "", quotaWindow: "auto", hasKey: false };
+
+export async function getQuotaSettings(): Promise<QuotaSettingsView> {
+  if (!isTauri()) return { ...previewSettings };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<QuotaSettingsView>("get_quota_settings");
+}
+
+export async function saveQuotaSettings(settings: QuotaSettings, apiKey: string): Promise<void> {
+  if (!isTauri()) { previewSettings = { ...settings, hasKey: Boolean(apiKey.trim()) || previewSettings.hasKey }; return; }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("save_quota_settings", { settings, apiKey });
+}
+
+export async function checkQuotaSettings(settings: QuotaSettings, apiKey: string): Promise<ProviderSnapshot> {
+  if (!isTauri()) return {
+    ...mockSnapshot, provider: "sub2api", displayName: "Sub2API", plan: "7d", resetCredits: null,
+    quotaDetails: [{ window: "7d", limit: 600, used: 150, remaining: 450, unit: "USD", resetsAt: mockSnapshot.primaryWindow?.resetsAt ?? null }],
+    primaryWindow: { ...mockSnapshot.primaryWindow!, remainingPercent: 75 },
+  };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<ProviderSnapshot>("check_quota_settings", { settings, apiKey });
+}
+
+export async function openSettings(): Promise<void> {
+  if (!isTauri()) { window.open(`${window.location.pathname}?settings`, "quota-settings"); return; }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("open_settings");
+}
+
+export async function showWidgetMenu(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("show_widget_menu");
+}
 
 export async function fetchSnapshots(force = false): Promise<ProviderSnapshot[]> {
   if (!isTauri()) return [mockSnapshot];
@@ -66,10 +102,13 @@ export async function closeWidget(): Promise<void> {
 export async function listenDesktopEvents(handlers: {
   onPreferences: (value: WidgetPreferences) => void;
   onRefresh: () => void;
+  onQuotaSettings: () => void;
 }): Promise<() => void> {
   if (!isTauri()) return () => undefined;
   const { listen } = await import("@tauri-apps/api/event");
   const unlistenPreferences = await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload));
   const unlistenRefresh = await listen("refresh-requested", handlers.onRefresh);
-  return () => { unlistenPreferences(); unlistenRefresh(); };
+  const unlistenQuotaSettings = await listen("quota-settings-changed", handlers.onQuotaSettings);
+  const unlistenReload = await listen("reload-requested", reloadWidget);
+  return () => { unlistenPreferences(); unlistenRefresh(); unlistenQuotaSettings(); unlistenReload(); };
 }

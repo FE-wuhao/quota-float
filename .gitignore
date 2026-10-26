@@ -25,3 +25,5 @@ auth.json
 credentials.json
 token.json
 /效果/
+/.playwright-cli/
+/output/playwright/

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CompactQuotaCard } from "./components/QuotaCard";
-import { closeWidget, fetchSnapshots, getPreferences, listenDesktopEvents, reloadWidget, startDragging } from "./lib/bridge";
+import { closeWidget, fetchSnapshots, getPreferences, isTauri, listenDesktopEvents, openSettings, reloadWidget, showWidgetMenu, startDragging } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
 import { copy, normalizeLanguage } from "./lib/i18n";
 import { mergeSnapshots } from "./lib/snapshots";
@@ -14,17 +14,21 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const failures = useRef(0);
+  const refreshSequence = useRef(0);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
 
   const refresh = useCallback(async (force = false) => {
+    const sequence = ++refreshSequence.current;
     try {
       const values = await fetchSnapshots(force);
+      if (sequence !== refreshSequence.current) return;
       const hasFailure = values.some((item) => item.status !== "ok");
       if (hasFailure) failures.current += 1;
       else failures.current = 0;
       setSnapshots((current) => mergeSnapshots(current, values));
     } catch {
+      if (sequence !== refreshSequence.current) return;
       failures.current += 1;
       setSnapshots((current) => current.length > 0
         ? current.map((item) => ({ ...item, status: "stale", message: "Refresh failed. Please try again later." }))
@@ -43,6 +47,7 @@ export default function App() {
     void listenDesktopEvents({
       onPreferences: (value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) }),
       onRefresh: () => void refresh(true),
+      onQuotaSettings: () => { setSnapshots([]); failures.current = 0; void refresh(true); },
     }).then((value) => {
       if (cancelled) value(); else cleanup = value;
     }).catch(() => undefined);
@@ -119,8 +124,9 @@ export default function App() {
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (isTauri()) { void showWidgetMenu(); return; }
         const menuWidth = 116;
-        const menuHeight = 66;
+        const menuHeight = 93;
         setContextMenu({
           x: Math.max(4, Math.min(event.clientX, window.innerWidth - menuWidth - 4)),
           y: Math.max(4, Math.min(event.clientY, window.innerHeight - menuHeight - 4)),
@@ -130,6 +136,7 @@ export default function App() {
       {content}
       {contextMenu ? (
         <div className="widget-context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+          <button role="menuitem" onClick={() => { setContextMenu(null); void openSettings(); }}>设置 / Settings</button>
           <button role="menuitem" onClick={() => { setContextMenu(null); reloadWidget(); }}>Reload</button>
           <button role="menuitem" onClick={() => { setContextMenu(null); void closeWidget(); }}>Close</button>
         </div>

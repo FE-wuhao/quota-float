@@ -1,6 +1,6 @@
 # Quota Float
 
-适用于 Windows 和 macOS 的 Codex 额度桌面悬浮卡。它读取本机 Codex Desktop 的登录状态，实时显示服务端返回的额度窗口和重置时间。
+适用于 Windows 和 macOS 的额度桌面悬浮卡。支持 Sub2API 的 API Key 独立额度，也可以读取本机 Codex Desktop 登录账号的官方额度。
 
 ## 功能
 
@@ -9,13 +9,21 @@
 - 菜单栏/系统托盘同步显示当前主额度窗口的剩余额度。
 - 支持中英文、自动刷新、额度状态和重置机会。
 - 右键提供 Reload 与 Close。
+- 悬浮窗右键或托盘菜单打开设置，可修改服务地址、API Key 和展示周期，支持测试查询。
+- Sub2API 支持总额度、5 小时、每日、每周额度；自动模式显示剩余比例最低的一项，悬停查看各项剩余金额。
 - 不上传令牌、聊天内容或额度原始响应，不包含遥测。
 
 ## How It Works
 
-Quota Float reads the existing Codex Desktop login state on your machine and queries Codex/ChatGPT quota endpoints with that session. It does not estimate usage from local token counts and does not redeem reset credits or modify account settings.
+首次启动会打开设置。选择 Sub2API，填写服务根地址（或 `/v1` 地址）及自己的 API Key，点击“测试查询”或“保存并刷新”。以后可从悬浮窗右键或托盘的“设置 / Settings…”更换 Key。已保存的 Key 不会回填到输入框，留空保留；更换服务地址时必须重新输入对应 Key。
 
-Browser preview uses mock data. Real quota reading requires the Tauri desktop app and an existing Codex Desktop login on the same machine.
+Sub2API 模式通过 `GET /v1/usage` 读取当前 Key 的 `quota` 和 `rate_limits`，按“剩余 / 上限”计算百分比。总额度没有自动重置倒计时，周期额度仅使用接口返回的重置时间。未返回独立 Key 限额时明确提示，不使用账户钱包、订阅共享余额或官方额度的三分之一替代。Key 已过期时仍可显示接口允许查询的额度记录，但不代表该 Key 可继续调用。
+
+API Key 保存在系统凭据库（Windows Credential Manager / macOS Keychain），按服务地址隔离。配置文件仅保存来源、服务地址和展示周期。请求不跟随重定向，仅支持 HTTPS（本机地址可用 HTTP）。
+
+官方 Codex 模式读取本机现有登录状态，调用 Codex/ChatGPT 额度接口。两种模式都不估算本地 token、不兑换重置机会、不修改服务端额度。
+
+浏览器预览使用示例数据，不保存或发送输入的 Key。真实额度查询和凭据保存需要 Tauri 桌面程序；官方模式还需要本机已登录 Codex Desktop。
 
 ## 下载与安装
 
@@ -39,9 +47,9 @@ Browser preview uses mock data. Real quota reading requires the Tauri desktop ap
 
 Quota Float is local-first and intentionally narrow:
 
-- Reads the local Codex Desktop login state only to query Codex quota.
-- Sends the existing Codex access token only to ChatGPT quota endpoints.
-- Stores only widget preferences in its own app config directory.
+- In official mode, reads the local Codex Desktop login state and sends that token only to ChatGPT quota endpoints.
+- In Sub2API mode, sends the configured API key only to the configured service's `/v1/usage` endpoint.
+- Stores non-secret widget and quota settings in its own app config directory; stores API keys in the OS credential store, isolated by service address.
 - Does not store Codex tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths.
 - Does not include telemetry, analytics, crash reporting, or third-party tracking.
 - Does not redeem reset credits or modify account settings.
