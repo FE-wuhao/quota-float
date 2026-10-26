@@ -40,4 +40,4 @@ Logs are intentionally generic. They must not include tokens, account IDs, raw b
 
 ## Accuracy Boundary
 
-Quota Float displays quota windows returned by the selected service. Sub2API mode uses only explicit Key limits, not shared wallet or subscription balances. Auto mode selects the lowest remaining percentage among the Key's returned limits. It does not estimate quota from local token usage or fabricate values when the response shape is unknown. Browser preview uses mock data without saving or transmitting a Key.
+Quota Float displays quota returned by the selected service. Auto mode selects the lowest remaining percentage among the Key's returned limits. When no independent Key limit is returned, auto mode displays the corresponding account or subscription balance as an amount and labels its scope. Keys belonging to the same account may share that balance. Without a returned limit, the app does not invent a percentage. It does not estimate quota from local token usage or divide official account quota into shares. Browser preview uses mock data without saving or transmitting a Key.

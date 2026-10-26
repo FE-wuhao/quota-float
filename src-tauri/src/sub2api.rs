@@ -5,7 +5,7 @@ use reqwest::{
 use serde_json::Value;
 use std::error::Error;
 
-use crate::models::{ProviderSnapshot, QuotaDetail, QuotaSettings, UsageWindow};
+use crate::models::{ProviderSnapshot, QuotaBalance, QuotaDetail, QuotaSettings, UsageWindow};
 
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
@@ -153,6 +153,21 @@ fn parse_snapshot(value: &Value, selected: &str) -> ProviderSnapshot {
             }
         }
     }
+    if details.is_empty() && selected == "auto" && value.get("mode").and_then(Value::as_str) == Some("unrestricted") {
+        let subscription = value.get("subscription").is_some_and(Value::is_object);
+        let amount = value.get("balance").or_else(|| if subscription { value.get("remaining") } else { None })
+            .and_then(Value::as_f64).filter(|n| n.is_finite());
+        if let Some(remaining) = amount {
+            let mut snapshot = failure("ok", "");
+            snapshot.message = None;
+            snapshot.balance = Some(QuotaBalance {
+                remaining,
+                unit: value.get("unit").and_then(Value::as_str).unwrap_or("USD").into(),
+                scope: if subscription { "subscription" } else { "account" }.into(),
+            });
+            return snapshot;
+        }
+    }
     let primary = if selected == "auto" {
         details
             .iter()
@@ -164,7 +179,7 @@ fn parse_snapshot(value: &Value, selected: &str) -> ProviderSnapshot {
         return failure(
             "unavailable",
             if details.is_empty() {
-                "接口未返回此 API Key 的独立限额，请在 Sub2API 中为该 Key 配置额度；账户或订阅共享余额不作为 Key 额度展示。"
+                "接口未返回可展示的 Key 限额或对应余额；如果此 Key 使用账户余额，请将展示额度切换为自动。"
             } else {
                 "此 API Key 未返回所选周期的限额，请在设置中切换周期或选择自动。"
             },

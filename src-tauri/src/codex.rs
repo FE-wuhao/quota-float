@@ -435,6 +435,7 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         scope_id: 0,
         quota_details: Vec::new(),
         allow_stale: true,
+        balance: None,
         display_name: "CODEX".into(),
         plan: pick_string(&usage, &["plan_type", "planType"]).map(|value| value.to_uppercase()),
         primary_window,

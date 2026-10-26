@@ -86,9 +86,9 @@ export function SettingsPage() {
             </label>
             <label className="settings-field">展示额度
               <select value={settings.quotaWindow} onChange={(event) => update({ quotaWindow: event.target.value as QuotaSettings["quotaWindow"] })}>
-                <option value="auto">自动 · 显示剩余比例最低的限额</option><option value="7d">每周额度</option><option value="5h">5 小时额度</option><option value="1d">每日额度</option><option value="total">总额度</option>
+                <option value="auto">自动 · Key 限额或对应余额</option><option value="7d">每周额度</option><option value="5h">5 小时额度</option><option value="1d">每日额度</option><option value="total">总额度</option>
               </select>
-              <small>仅展示当前 Key 的独立限额；账户或订阅共享余额不计入。</small>
+              <small>优先显示 Key 独立限额；未设置时，自动模式显示对应账户或订阅余额。</small>
             </label>
             <label className="settings-field">连接方式
               <select value={settings.connectionMode} onChange={(event) => update({ connectionMode: event.target.value as QuotaSettings["connectionMode"] })}>
@@ -105,7 +105,8 @@ export function SettingsPage() {
       </form>
       {notice ? <p className={`settings-notice${notice.error ? " settings-notice--error" : ""}`} role={notice.error ? "alert" : "status"}>{notice.text}</p> : null}
       {preview?.status === "ok" ? <section className="settings-result" aria-label="额度查询结果">
-        <div><span>当前剩余</span><strong>{Math.round(preview.primaryWindow?.remainingPercent ?? 0)}<small>%</small></strong></div>
+        <div><span>{preview.balance ? "当前余额" : "当前剩余"}</span><strong>{preview.balance ? preview.balance.remaining.toFixed(2) : Math.round(preview.primaryWindow?.remainingPercent ?? 0)}<small>{preview.balance ? preview.balance.unit : "%"}</small></strong></div>
+        {preview.balance ? <p>此 Key 未设置独立限额，当前显示它对应{preview.balance.scope === "subscription" ? "订阅" : "账户"}的余额。</p> : null}
         {preview.quotaDetails?.map((detail) => <p key={detail.window}><span>{labels[detail.window]}</span><span>{detail.remaining.toFixed(2)} / {detail.limit.toFixed(2)} {detail.unit}</span></p>)}
       </section> : null}
     </main>

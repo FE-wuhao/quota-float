@@ -24,6 +24,7 @@ pub struct ProviderSnapshot {
     pub scope_id: u64,
     pub quota_details: Vec<QuotaDetail>,
     pub allow_stale: bool,
+    pub balance: Option<QuotaBalance>,
 }
 
 impl ProviderSnapshot {
@@ -42,8 +43,17 @@ impl ProviderSnapshot {
             scope_id: 0,
             quota_details: Vec::new(),
             allow_stale: true,
+            balance: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuotaBalance {
+    pub remaining: f64,
+    pub unit: String,
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

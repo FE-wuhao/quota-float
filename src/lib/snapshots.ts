@@ -5,7 +5,7 @@ export function mergeSnapshots(current: ProviderSnapshot[], incoming: ProviderSn
     if (next.status === "ok") return next;
     if (next.status === "signed_out") return next;
     if (next.allowStale === false) return next;
-    const previous = current.find((item) => item.provider === next.provider && item.scopeId === next.scopeId && item.primaryWindow);
+    const previous = current.find((item) => item.provider === next.provider && item.scopeId === next.scopeId && (item.primaryWindow || item.balance));
     return previous
       ? { ...previous, status: "stale", message: next.message, updatedAt: previous.updatedAt }
       : next;

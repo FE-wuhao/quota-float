@@ -182,6 +182,7 @@ button { font: inherit; }
 .compact-status--stale { background: #9399a4; box-shadow: none; }
 .compact-primary strong, .compact-weekly strong { display: block; color: #f7f8fa; font-variant-numeric: tabular-nums; letter-spacing: -.055em; line-height: .95; }
 .compact-primary--single strong { display: flex; align-items: baseline; margin: 0; font-size: 17px; font-weight: 650; line-height: 1; }
+.compact-primary--balance strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .compact-primary strong small, .compact-weekly strong small { margin-left: 1px; font-size: 10px; font-weight: 720; }
 .compact-separator { color: #68717e; font-size: 11px; line-height: 1; }
 .compact-progress { width: 70px; height: 3px; margin-top: 3px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.55); }

@@ -36,6 +36,15 @@ struct AppState {
 }
 
 fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
+    if let Some(balance) = snapshots.first().and_then(|snapshot| snapshot.balance.as_ref()) {
+        if let Some(tray) = app.tray_by_id("main") {
+            let amount = if balance.unit == "USD" { format!("${:.2}", balance.remaining) } else { format!("{:.2} {}", balance.remaining, balance.unit) };
+            let scope = if balance.scope == "subscription" { "订阅" } else { "账户" };
+            let _ = tray.set_title(Some(amount.clone()));
+            let _ = tray.set_tooltip(Some(format!("当前 API Key 对应{scope}余额 {amount}")));
+        }
+        return;
+    }
     let window = snapshots
         .first()
         .and_then(|snapshot| snapshot.primary_window.as_ref());

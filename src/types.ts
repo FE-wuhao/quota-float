@@ -22,6 +22,7 @@ export interface ProviderSnapshot {
   scopeId?: number;
   quotaDetails?: QuotaDetail[];
   allowStale?: boolean;
+  balance?: { remaining: number; unit: string; scope: "account" | "subscription" } | null;
 }
 
 export interface QuotaDetail {
