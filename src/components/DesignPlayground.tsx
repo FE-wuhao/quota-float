@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { ProviderSnapshot, WidgetPreferences } from "../types";
 import { CompactQuotaCard, QuotaCard } from "./QuotaCard";
+import { defaultPreferences } from "../lib/preferences";
 
 const preview: ProviderSnapshot = {
   provider: "codex",
@@ -14,7 +15,7 @@ const preview: ProviderSnapshot = {
   status: "ok",
   message: null,
 };
-const preferences: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: "codex", autoRotateSeconds: 12, language: "en" };
+const preferences: WidgetPreferences = { ...defaultPreferences, pinnedProvider: "codex", language: "en" };
 
 interface Values {
   radius: number;

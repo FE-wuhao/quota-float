@@ -5,6 +5,7 @@ import { exceedsDragThreshold, type PointerOrigin } from "../lib/gesture";
 import { copy, normalizeLanguage } from "../lib/i18n";
 import type { Language, ProviderSnapshot, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
+import { defaultPreferences } from "../lib/preferences";
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -165,7 +166,8 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
   onRefresh,
   isRefreshing = false,
   language = "zh-CN",
-}: Pick<Props, "snapshot" | "onDrag" | "onRefresh" | "isRefreshing"> & { language?: Language }) {
+  appearance = defaultPreferences,
+}: Pick<Props, "snapshot" | "onDrag" | "onRefresh" | "isRefreshing"> & { language?: Language; appearance?: WidgetPreferences }) {
   const pointerOrigin = useRef<PointerOrigin | null>(null);
   const dragging = useRef(false);
   const activeLanguage = normalizeLanguage(language);
@@ -200,6 +202,7 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
   return (
     <main
       className={`compact-quota-card quota-card--${snapshot.status} quota-card--${tier}`}
+      onDoubleClick={() => { if (!isRefreshing) onRefresh?.(); }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         pointerOrigin.current = { x: event.screenX, y: event.screenY };
@@ -219,17 +222,17 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
       }}
       onPointerCancel={resetGesture}
       aria-label={accessibleLabel}
-      title={accessibleLabel}
+      title={`${accessibleLabel}\n${activeLanguage === "en" ? "Double-click to refresh · Right-click for settings" : "双击刷新 · 右键设置"}`}
     >
       <div className="aurora" aria-hidden="true" />
       {available ? (
         <>
           <section className={`compact-primary compact-primary--single${balance ? " compact-primary--balance" : ""}`}>
-            <i className={`compact-status compact-status--${snapshot.status}`} aria-hidden="true" />
-            {balance ? <strong>{balanceAmount}</strong> : <>
+            {appearance.showStatus ? <i className={`compact-status compact-status--${snapshot.status}`} aria-hidden="true" /> : null}
+            {balance ? <strong>{balanceAmount}{balance.unit !== "USD" ? <small>{balance.unit}</small> : null}</strong> : <>
               <strong>{primary}<small>%</small></strong>
-              <span className="compact-separator" aria-hidden="true">·</span>
-              <span className="compact-reset-time">{snapshot.provider === "sub2api" && primaryWindow?.windowSeconds === 0 ? (activeLanguage === "en" ? "total" : "总额") : compactResetLabel}</span>
+              {appearance.showResetTime ? <><span className="compact-separator" aria-hidden="true">·</span>
+              <span className="compact-reset-time">{snapshot.provider === "sub2api" && primaryWindow?.windowSeconds === 0 ? (activeLanguage === "en" ? "total" : "总额") : compactResetLabel}</span></> : null}
             </>}
           </section>
         </>
@@ -239,7 +242,7 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
           <div><strong>{statusLabel}</strong></div>
         </section>
       )}
-      <button
+      {appearance.showRefreshButton ? <button
         type="button"
         className={`compact-refresh-button${isRefreshing ? " compact-refresh-button--active" : ""}`}
         onPointerDown={(event) => event.stopPropagation()}
@@ -252,7 +255,7 @@ export const CompactQuotaCard = memo(function CompactQuotaCard({
         title={t.refreshQuota}
       >
         <ArrowClockwise aria-hidden="true" />
-      </button>
+      </button> : null}
     </main>
   );
 });

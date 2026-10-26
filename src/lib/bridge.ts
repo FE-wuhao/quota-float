@@ -1,6 +1,9 @@
 import type { ProviderSnapshot, QuotaSettings, QuotaSettingsView, WidgetPreferences } from "../types";
 
-const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
+import { defaultPreferences } from "./preferences";
+
+let previewPreferences = { ...defaultPreferences };
+const previewChannel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("quota-float-preview");
 
 const mockSnapshot: ProviderSnapshot = {
   provider: "codex",
@@ -60,13 +63,18 @@ export async function fetchSnapshots(force = false): Promise<ProviderSnapshot[]>
 }
 
 export async function getPreferences(): Promise<WidgetPreferences> {
-  if (!isTauri()) return defaultPreferences;
+  if (!isTauri()) return { ...previewPreferences };
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<WidgetPreferences>("get_preferences");
 }
 
 export async function updatePreferences(value: WidgetPreferences): Promise<void> {
-  if (!isTauri()) return;
+  if (!isTauri()) {
+    previewPreferences = { ...value };
+    window.dispatchEvent(new CustomEvent("preview-preferences", { detail: value }));
+    previewChannel?.postMessage(value);
+    return;
+  }
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("set_preferences", { preferences: value });
 }
@@ -95,8 +103,14 @@ export function reloadWidget(): void {
 
 export async function closeWidget(): Promise<void> {
   if (!isTauri()) return;
-  const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().hide();
+  const preferences = await getPreferences();
+  await updatePreferences({ ...preferences, displayMode: "tray" });
+}
+
+export async function resizeWidget(width: number, height: number): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("resize_widget", { width, height });
 }
 
 export async function listenDesktopEvents(handlers: {
@@ -104,7 +118,16 @@ export async function listenDesktopEvents(handlers: {
   onRefresh: () => void;
   onQuotaSettings: () => void;
 }): Promise<() => void> {
-  if (!isTauri()) return () => undefined;
+  if (!isTauri()) {
+    const local = (event: Event) => handlers.onPreferences((event as CustomEvent<WidgetPreferences>).detail);
+    const remote = (event: MessageEvent<WidgetPreferences>) => {
+      previewPreferences = event.data;
+      handlers.onPreferences(event.data);
+    };
+    window.addEventListener("preview-preferences", local);
+    previewChannel?.addEventListener("message", remote);
+    return () => { window.removeEventListener("preview-preferences", local); previewChannel?.removeEventListener("message", remote); };
+  }
   const { listen } = await import("@tauri-apps/api/event");
   const unlistenPreferences = await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload));
   const unlistenRefresh = await listen("refresh-requested", handlers.onRefresh);

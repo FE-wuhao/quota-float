@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { checkQuotaSettings, getQuotaSettings, isTauri, saveQuotaSettings } from "../lib/bridge";
 import type { ProviderSnapshot, QuotaSettings, QuotaSettingsView } from "../types";
+import { AppearanceSettings } from "./AppearanceSettings";
 
 const initial: QuotaSettingsView = { source: "sub2api", baseUrl: "", quotaWindow: "auto", connectionMode: "direct", hasKey: false };
 const labels: Record<string, string> = { total: "总额度", "5h": "5 小时", "1d": "每日", "7d": "每周" };
@@ -10,6 +11,7 @@ function normalizedBase(value: string): string {
 }
 
 export function SettingsPage() {
+  const [tab, setTab] = useState<"quota" | "appearance">("quota");
   const [settings, setSettings] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [apiKey, setApiKey] = useState("");
@@ -63,8 +65,13 @@ export function SettingsPage() {
 
   return (
     <main className="settings-page">
-      <header className="settings-heading"><span>QUOTA FLOAT</span><h1>额度设置</h1><p>选择额度来源，让悬浮窗显示你正在使用的份额。</p></header>
+      <header className="settings-heading"><span>QUOTA FLOAT</span><h1>设置</h1><p>选择额度来源，调整适合你的展示方式。</p></header>
       {!isTauri() ? <p className="settings-preview-note">浏览器预览：查询结果为示例，Key 不会保存或发送。</p> : null}
+      <div className="settings-tabs" role="tablist" aria-label="设置分类">
+        <button type="button" role="tab" id="quota-tab" aria-controls="quota-panel" aria-selected={tab === "quota"} onClick={() => setTab("quota")}>额度来源</button>
+        <button type="button" role="tab" id="appearance-tab" aria-controls="appearance-panel" aria-selected={tab === "appearance"} onClick={() => setTab("appearance")}>展示与外观</button>
+      </div>
+      <section role="tabpanel" id="quota-panel" aria-labelledby="quota-tab" hidden={tab !== "quota"}>
       <form onSubmit={(event) => { event.preventDefault(); void run("save"); }}>
         <fieldset disabled={loading || busy !== null}>
           <label className="settings-field">额度来源
@@ -109,6 +116,8 @@ export function SettingsPage() {
         {preview.balance ? <p>此 Key 未设置独立限额，当前显示它对应{preview.balance.scope === "subscription" ? "订阅" : "账户"}的余额。</p> : null}
         {preview.quotaDetails?.map((detail) => <p key={detail.window}><span>{labels[detail.window]}</span><span>{detail.remaining.toFixed(2)} / {detail.limit.toFixed(2)} {detail.unit}</span></p>)}
       </section> : null}
+      </section>
+      <section role="tabpanel" id="appearance-panel" aria-labelledby="appearance-tab" hidden={tab !== "appearance"}><AppearanceSettings /></section>
     </main>
   );
 }

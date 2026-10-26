@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CompactQuotaCard } from "./components/QuotaCard";
-import { closeWidget, fetchSnapshots, getPreferences, isTauri, listenDesktopEvents, openSettings, reloadWidget, showWidgetMenu, startDragging } from "./lib/bridge";
+import { closeWidget, fetchSnapshots, getPreferences, isTauri, listenDesktopEvents, openSettings, reloadWidget, resizeWidget, showWidgetMenu, startDragging } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
 import { copy, normalizeLanguage } from "./lib/i18n";
 import { mergeSnapshots } from "./lib/snapshots";
-import type { ProviderSnapshot, WidgetPreferences } from "./types";
+import type { ProviderSnapshot } from "./types";
+import { defaultPreferences } from "./lib/preferences";
 
-const DEFAULT_PREFS: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
+const DEFAULT_PREFS = defaultPreferences;
 export default function App() {
   const [snapshots, setSnapshots] = useState<ProviderSnapshot[]>([]);
   const [preferences, setPreferences] = useState(DEFAULT_PREFS);
@@ -15,8 +16,40 @@ export default function App() {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const failures = useRef(0);
   const refreshSequence = useRef(0);
+  const contentRef = useRef<HTMLDivElement>(null);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element) return;
+    let lastSize = "";
+    let pendingSize: { width: number; height: number } | null = null;
+    let resizing = false;
+    let cancelled = false;
+    const flush = async () => {
+      if (resizing) return;
+      resizing = true;
+      try {
+        while (pendingSize && !cancelled) {
+          const size = pendingSize;
+          pendingSize = null;
+          await resizeWidget(size.width, size.height);
+        }
+      } catch { /* A future content change retries resizing. */ }
+      finally { resizing = false; }
+    };
+    const observer = new ResizeObserver(() => {
+      const { width, height } = element.getBoundingClientRect();
+      const size = { width: Math.max(32, Math.min(320, Math.ceil(width))), height: Math.max(20, Math.min(40, Math.ceil(height))) };
+      const key = `${size.width}:${size.height}`;
+      if (key === lastSize) return;
+      lastSize = key; pendingSize = size;
+      void flush();
+    });
+    observer.observe(element);
+    return () => { cancelled = true; observer.disconnect(); };
+  }, []);
 
   const refresh = useCallback(async (force = false) => {
     const sequence = ++refreshSequence.current;
@@ -112,7 +145,8 @@ export default function App() {
     <CompactQuotaCard
       snapshot={current}
       language={language}
-      onDrag={() => startDragging()}
+      appearance={preferences}
+      onDrag={() => { if (!preferences.locked) void startDragging(); }}
       onRefresh={() => void refreshManually()}
       isRefreshing={isManualRefreshing}
     />
@@ -126,19 +160,20 @@ export default function App() {
         event.stopPropagation();
         if (isTauri()) { void showWidgetMenu(); return; }
         const menuWidth = 116;
-        const menuHeight = 93;
+        const menuHeight = 120;
         setContextMenu({
           x: Math.max(4, Math.min(event.clientX, window.innerWidth - menuWidth - 4)),
           y: Math.max(4, Math.min(event.clientY, window.innerHeight - menuHeight - 4)),
         });
       }}
     >
-      {content}
+      <div ref={contentRef} className="widget-content" style={{ "--widget-font-size": `${preferences.fontSize}px`, "--widget-opacity": preferences.opacity } as CSSProperties}>{content}</div>
       {contextMenu ? (
         <div className="widget-context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
           <button role="menuitem" onClick={() => { setContextMenu(null); void openSettings(); }}>设置 / Settings</button>
+          <button role="menuitem" onClick={() => { setContextMenu(null); void refreshManually(); }}>刷新额度</button>
           <button role="menuitem" onClick={() => { setContextMenu(null); reloadWidget(); }}>Reload</button>
-          <button role="menuitem" onClick={() => { setContextMenu(null); void closeWidget(); }}>Close</button>
+          <button role="menuitem" onClick={() => { setContextMenu(null); void closeWidget(); }}>收进系统托盘</button>
         </div>
       ) : null}
     </div>

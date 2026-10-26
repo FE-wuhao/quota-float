@@ -105,6 +105,28 @@ pub struct WidgetPreferences {
     pub auto_rotate_seconds: u64,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default = "default_display_mode")]
+    pub display_mode: String,
+    #[serde(default = "default_font_size")]
+    pub font_size: u32,
+    #[serde(default = "default_opacity")]
+    pub opacity: f64,
+    #[serde(default = "default_always_on_top")]
+    pub show_status: bool,
+    #[serde(default)]
+    pub show_reset_time: bool,
+    #[serde(default)]
+    pub show_refresh_button: bool,
+}
+
+fn default_display_mode() -> String {
+    "floating".into()
+}
+fn default_font_size() -> u32 {
+    12
+}
+fn default_opacity() -> f64 {
+    0.92
 }
 
 fn default_always_on_top() -> bool {
@@ -122,12 +144,27 @@ impl Default for WidgetPreferences {
             pinned_provider: None,
             auto_rotate_seconds: 12,
             language: default_language(),
+            display_mode: default_display_mode(),
+            font_size: default_font_size(),
+            opacity: default_opacity(),
+            show_status: true,
+            show_reset_time: false,
+            show_refresh_button: false,
         }
     }
 }
 
 impl WidgetPreferences {
     pub fn normalized(mut self) -> Self {
+        if !matches!(self.display_mode.as_str(), "floating" | "tray") {
+            self.display_mode = default_display_mode();
+        }
+        self.font_size = self.font_size.clamp(10, 16);
+        self.opacity = if self.opacity.is_finite() {
+            self.opacity.clamp(0.35, 1.0)
+        } else {
+            default_opacity()
+        };
         self.auto_rotate_seconds = self.auto_rotate_seconds.clamp(5, 300);
         if self.pinned_provider.as_deref() != Some("codex") {
             self.pinned_provider = None;

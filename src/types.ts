@@ -49,4 +49,10 @@ export interface WidgetPreferences {
   pinnedProvider: ProviderId | null;
   autoRotateSeconds: number;
   language: Language;
+  displayMode: "floating" | "tray";
+  fontSize: number;
+  opacity: number;
+  showStatus: boolean;
+  showResetTime: boolean;
+  showRefreshButton: boolean;
 }

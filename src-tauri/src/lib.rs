@@ -1,4 +1,5 @@
 mod codex;
+mod desktop;
 mod models;
 mod sub2api;
 
@@ -17,7 +18,7 @@ use models::{ProviderSnapshot, QuotaSettings, QuotaSettingsView, WidgetPreferenc
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, State, WindowEvent,
+    AppHandle, Emitter, Manager, State, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
@@ -36,12 +37,31 @@ struct AppState {
 }
 
 fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
-    if let Some(balance) = snapshots.first().and_then(|snapshot| snapshot.balance.as_ref()) {
+    if let Some(balance) = snapshots
+        .first()
+        .and_then(|snapshot| snapshot.balance.as_ref())
+    {
         if let Some(tray) = app.tray_by_id("main") {
-            let amount = if balance.unit == "USD" { format!("${:.2}", balance.remaining) } else { format!("{:.2} {}", balance.remaining, balance.unit) };
-            let scope = if balance.scope == "subscription" { "订阅" } else { "账户" };
-            let _ = tray.set_title(Some(amount.clone()));
-            let _ = tray.set_tooltip(Some(format!("当前 API Key 对应{scope}余额 {amount}")));
+            let amount = if balance.unit == "USD" {
+                format!("${:.2}", balance.remaining)
+            } else {
+                format!("{:.2} {}", balance.remaining, balance.unit)
+            };
+            let scope = if balance.scope == "subscription" {
+                "订阅"
+            } else {
+                "账户"
+            };
+            let _ = tray.set_title(None::<&str>);
+            let _ = tray.set_icon(Some(desktop::tray_image(
+                &desktop::balance_digits(balance.remaining),
+                if balance.remaining <= 0.0 {
+                    [255, 130, 117, 255]
+                } else {
+                    [142, 214, 172, 255]
+                },
+            )));
+            let _ = tray.set_tooltip(Some(format!("Quota Float · 当前 API Key 对应{scope}余额 {amount}\n单击打开设置，右键切换展示方式")));
         }
         return;
     }
@@ -49,10 +69,6 @@ fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
         .first()
         .and_then(|snapshot| snapshot.primary_window.as_ref());
     if let Some(tray) = app.tray_by_id("main") {
-        let title = window
-            .map(|window| window.remaining_percent.round().clamp(0.0, 100.0) as u32)
-            .map(|value| format!("{value}%"))
-            .unwrap_or_else(|| "--%".to_string());
         let tooltip = window
             .map(|window| {
                 let value = window.remaining_percent.round().clamp(0.0, 100.0) as u32;
@@ -70,8 +86,20 @@ fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
                 format!("{name} {label}额度剩余 {value}%")
             })
             .unwrap_or_else(|| "额度暂不可用；右键打开设置".to_string());
-        let _ = tray.set_title(Some(title));
-        let _ = tray.set_tooltip(Some(tooltip));
+        let _ = tray.set_title(None::<&str>);
+        let digits = window
+            .map(|value| format!("{:.0}", value.remaining_percent.clamp(0.0, 100.0)))
+            .unwrap_or_else(|| "--".into());
+        let color = match window.map(|value| value.remaining_percent) {
+            Some(value) if value <= 10.0 => [255, 130, 117, 255],
+            Some(value) if value <= 25.0 => [240, 187, 104, 255],
+            Some(_) => [142, 214, 172, 255],
+            None => [166, 175, 190, 255],
+        };
+        let _ = tray.set_icon(Some(desktop::tray_image(&digits, color)));
+        let _ = tray.set_tooltip(Some(format!(
+            "Quota Float · {tooltip}\n单击打开设置，右键切换展示方式"
+        )));
     }
 }
 
@@ -100,7 +128,11 @@ async fn fetch_current_source(state: &AppState) -> Vec<ProviderSnapshot> {
 }
 
 fn api_client<'a>(state: &'a AppState, settings: &QuotaSettings) -> &'a reqwest::Client {
-    if settings.connection_mode == "system" { &state.api_system_client } else { &state.api_direct_client }
+    if settings.connection_mode == "system" {
+        &state.api_system_client
+    } else {
+        &state.api_direct_client
+    }
 }
 
 fn build_api_client(direct: bool) -> reqwest::Client {
@@ -110,7 +142,9 @@ fn build_api_client(direct: bool) -> reqwest::Client {
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("QuotaFloat/", env!("CARGO_PKG_VERSION")));
     let builder = if direct { builder.no_proxy() } else { builder };
-    builder.build().expect("static API client configuration must be valid")
+    builder
+        .build()
+        .expect("static API client configuration must be valid")
 }
 
 fn load_quota_settings(path: &PathBuf) -> QuotaSettings {
@@ -264,7 +298,7 @@ fn show_widget_menu(app: AppHandle) -> Result<(), String> {
     let window = app.get_webview_window("widget").ok_or("悬浮窗不可用。")?;
     let settings = MenuItem::with_id(&app, "settings", "设置 / Settings…", true, None::<&str>);
     let reload = MenuItem::with_id(&app, "reload", "Reload", true, None::<&str>);
-    let hide = MenuItem::with_id(&app, "hide", "Close", true, None::<&str>);
+    let hide = MenuItem::with_id(&app, "hide", "收进系统托盘", true, None::<&str>);
     let (settings, reload, hide) = (
         settings.map_err(|_| "菜单不可用。")?,
         reload.map_err(|_| "菜单不可用。")?,
@@ -295,10 +329,11 @@ fn load_preferences(path: &PathBuf) -> WidgetPreferences {
 
 fn persist_preferences<T: serde::Serialize>(path: &PathBuf, value: &T) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|_| "failed to create settings directory".to_string())?;
+        fs::create_dir_all(parent)
+            .map_err(|_| "failed to create settings directory".to_string())?;
     }
-    let serialized = serde_json::to_vec_pretty(value)
-        .map_err(|_| "failed to serialize settings".to_string())?;
+    let serialized =
+        serde_json::to_vec_pretty(value).map_err(|_| "failed to serialize settings".to_string())?;
     let temporary = path.with_extension("json.tmp");
     let backup = path.with_extension("json.bak");
     let mut file = fs::File::create(&temporary)
@@ -382,139 +417,99 @@ fn get_preferences(state: State<'_, AppState>) -> Result<WidgetPreferences, Stri
 }
 
 #[tauri::command]
-fn set_preferences(
+async fn set_preferences(
     preferences: WidgetPreferences,
     state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    store_preferences(&app, &state, preferences)
+}
+
+fn store_preferences(
+    app: &AppHandle,
+    state: &AppState,
+    preferences: WidgetPreferences,
 ) -> Result<(), String> {
     let preferences = preferences.normalized();
-    persist_preferences(&state.preferences_path, &preferences)?;
-    *state
-        .preferences
-        .lock()
-        .map_err(|_| "settings unavailable".to_string())? = preferences;
+    let previous = {
+        let mut saved = state
+            .preferences
+            .lock()
+            .map_err(|_| "settings unavailable".to_string())?;
+        let previous = saved.clone();
+        persist_preferences(&state.preferences_path, &preferences)?;
+        *saved = preferences.clone();
+        previous
+    };
+    if let Err(error) = desktop::apply_preferences(app, &preferences) {
+        if let Ok(mut saved) = state.preferences.lock() {
+            let _ = persist_preferences(&state.preferences_path, &previous);
+            *saved = previous.clone();
+        }
+        let _ = desktop::apply_preferences(app, &previous);
+        return Err(error);
+    }
+    let _ = app.emit("preferences-changed", preferences);
     Ok(())
 }
 
-fn apply_lock(app: &AppHandle, locked: bool) -> Result<(), String> {
-    let window = app
-        .get_webview_window("widget")
-        .ok_or_else(|| "widget window missing".to_string())?;
-    window
-        .set_ignore_cursor_events(locked)
-        .map_err(|_| "failed to toggle click-through".to_string())
-}
-
-fn reset_widget_to_compact(window: &tauri::WebviewWindow) {
-    let _ = window.set_size(LogicalSize::new(112.0, 32.0));
-}
-
-fn show_widget_below_tray(window: &tauri::WebviewWindow, rect: tauri::Rect) {
-    reset_widget_to_compact(window);
-    let fallback_scale = window.scale_factor().unwrap_or(1.0);
-    let (rect_x, rect_y) = match rect.position {
-        Position::Physical(position) => (position.x as f64, position.y as f64),
-        Position::Logical(position) => {
-            let physical = position.to_physical::<f64>(fallback_scale);
-            (physical.x, physical.y)
-        }
-    };
-    let (rect_width, rect_height) = match rect.size {
-        Size::Physical(size) => (size.width as f64, size.height as f64),
-        Size::Logical(size) => {
-            let physical = size.to_physical::<f64>(fallback_scale);
-            (physical.width, physical.height)
-        }
-    };
-    let monitors = window.available_monitors().unwrap_or_default();
-    let monitor = monitors.iter().find(|monitor| {
-        let origin = monitor.position();
-        let size = monitor.size();
-        rect_x >= origin.x as f64
-            && rect_x < (origin.x as f64 + size.width as f64)
-            && rect_y >= origin.y as f64
-            && rect_y < (origin.y as f64 + size.height as f64)
-    });
-    let scale = monitor.map(|value| value.scale_factor()).unwrap_or(fallback_scale);
-    let panel_width = 112.0 * scale;
-    let panel_height = 32.0 * scale;
-    let mut x = rect_x + rect_width / 2.0 - panel_width / 2.0;
-    let mut y = rect_y + rect_height + 6.0 * scale;
-    if let Some(monitor) = monitor {
-        let origin = monitor.position();
-        let size = monitor.size();
-        let min_x = origin.x as f64 + 6.0 * scale;
-        let max_x = origin.x as f64 + size.width as f64 - panel_width - 6.0 * scale;
-        let min_y = origin.y as f64;
-        let max_y = origin.y as f64 + size.height as f64 - panel_height;
-        x = x.clamp(min_x, max_x.max(min_x));
-        y = y.clamp(min_y, max_y.max(min_y));
-    }
-    let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
-    let _ = window.show();
-    let _ = window.set_focus();
+fn set_display_mode(app: &AppHandle, mode: &str) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut preferences = state
+        .preferences
+        .lock()
+        .map_err(|_| "settings unavailable".to_string())?
+        .clone();
+    preferences.display_mode = mode.into();
+    store_preferences(app, &state, preferences)
 }
 
 #[tauri::command]
-fn set_widget_locked(
+async fn set_widget_locked(
     locked: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WidgetPreferences, String> {
-    let previous = state
+    let mut next = state
         .preferences
         .lock()
         .map_err(|_| "settings unavailable".to_string())?
         .clone();
-    let mut next = previous.clone();
     next.locked = locked;
-    persist_preferences(&state.preferences_path, &next)?;
-    if let Err(error) = apply_lock(&app, locked) {
-        let _ = persist_preferences(&state.preferences_path, &previous);
-        return Err(error);
-    }
-    *state
-        .preferences
-        .lock()
-        .map_err(|_| "settings unavailable".to_string())? = next.clone();
+    store_preferences(&app, &state, next.clone())?;
     Ok(next)
 }
 
 #[tauri::command]
-fn set_widget_always_on_top(
+async fn set_widget_always_on_top(
     always_on_top: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WidgetPreferences, String> {
-    let previous = state
+    let mut next = state
         .preferences
         .lock()
         .map_err(|_| "settings unavailable".to_string())?
         .clone();
-    let mut next = previous.clone();
     next.always_on_top = always_on_top;
-    persist_preferences(&state.preferences_path, &next)?;
-    let window = app
-        .get_webview_window("widget")
-        .ok_or_else(|| "widget window missing".to_string())?;
-    if let Err(error) = window.set_always_on_top(always_on_top) {
-        let _ = persist_preferences(&state.preferences_path, &previous);
-        return Err(format!("failed to toggle always-on-top: {error}"));
-    }
-    *state
-        .preferences
-        .lock()
-        .map_err(|_| "settings unavailable".to_string())? = next.clone();
-    let _ = app.emit_to("widget", "preferences-changed", next.clone());
+    store_preferences(&app, &state, next.clone())?;
     Ok(next)
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let settings = MenuItem::with_id(app, "settings", "设置 / Settings…", true, None::<&str>)?;
-    let show = MenuItem::with_id(app, "show", "Show / Hide", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "显示悬浮条", true, None::<&str>)?;
+    let hide = MenuItem::with_id(app, "hide", "收进系统托盘", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
     let unlock = MenuItem::with_id(app, "unlock", "Unlock widget", true, None::<&str>)?;
     let pin = MenuItem::with_id(app, "pin", "Pin / Unpin Codex", true, None::<&str>)?;
-    let language = MenuItem::with_id(app, "language", "Switch Language / 切换语言", true, None::<&str>)?;
+    let language = MenuItem::with_id(
+        app,
+        "language",
+        "Switch Language / 切换语言",
+        true,
+        None::<&str>,
+    )?;
     let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(
         app,
@@ -525,39 +520,36 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &settings, &refresh, &unlock, &pin, &language, &autostart, &quit])?;
-    let mut builder = TrayIconBuilder::with_id("main")
+    let menu = Menu::with_items(
+        app,
+        &[
+            &settings, &show, &hide, &refresh, &unlock, &pin, &language, &autostart, &quit,
+        ],
+    )?;
+    let builder = TrayIconBuilder::with_id("main")
         .menu(&menu)
-        .tooltip("Codex 额度加载中")
-        .title("--%")
+        .icon(desktop::tray_image("--", [166, 175, 190, 255]))
+        .tooltip("Quota Float · 额度加载中")
         .show_menu_on_left_click(false);
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
     let autostart_menu = autostart.clone();
     builder
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => {
-                if let Some(window) = app.get_webview_window("widget") {
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.hide();
-                    } else {
-                        reset_widget_to_compact(&window);
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                if let Err(error) = set_display_mode(app, "floating") {
+                    eprintln!("{error}");
                 }
             }
             "refresh" => {
                 let _ = app.emit_to("widget", "refresh-requested", ());
             }
             "unlock" => {
-                let _ = apply_lock(app, false);
                 if let Some(state) = app.try_state::<AppState>() {
-                    if let Ok(mut prefs) = state.preferences.lock() {
-                        prefs.locked = false;
-                        let _ = persist_preferences(&state.preferences_path, &*prefs);
-                        let _ = app.emit_to("widget", "preferences-changed", prefs.clone());
+                    let previous = state.preferences.lock().map(|prefs| prefs.clone());
+                    if let Ok(mut preferences) = previous {
+                        preferences.locked = false;
+                        if let Err(error) = store_preferences(app, &state, preferences) {
+                            eprintln!("{error}");
+                        }
                     }
                 }
             }
@@ -570,7 +562,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                             Some("codex".into())
                         };
                         let _ = persist_preferences(&state.preferences_path, &*prefs);
-                        let _ = app.emit_to("widget", "preferences-changed", prefs.clone());
+                        let _ = app.emit("preferences-changed", prefs.clone());
                     }
                 }
             }
@@ -585,7 +577,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                         let normalized = prefs.clone().normalized();
                         *prefs = normalized.clone();
                         let _ = persist_preferences(&state.preferences_path, &normalized);
-                        let _ = app.emit_to("widget", "preferences-changed", normalized);
+                        let _ = app.emit("preferences-changed", normalized);
                     }
                 }
             }
@@ -616,25 +608,31 @@ pub fn run() {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
                 let handle = app.clone();
-                tauri::async_runtime::spawn(async move { let _ = open_settings(handle).await; });
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_settings(handle).await;
+                });
             }
-            "reload" => { let _ = app.emit_to("widget", "reload-requested", ()); }
+            "reload" => {
+                let _ = app.emit_to("widget", "reload-requested", ());
+            }
             "hide" => {
-                if let Some(window) = app.get_webview_window("widget") { let _ = window.hide(); }
+                if let Err(error) = set_display_mode(app, "tray") {
+                    eprintln!("{error}");
+                }
             }
             _ => {}
         })
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("widget") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = open_settings(handle).await;
+            });
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
         ))
-        // The widget has a fixed footprint; only its desktop position should persist.
+        // Content determines size; only desktop position is restored by window-state.
         .plugin(
             WindowStateBuilder::default()
                 .with_state_flags(StateFlags::POSITION)
@@ -671,16 +669,12 @@ pub fn run() {
                     let _ = window.set_skip_taskbar(false);
                 }
             }
-            if preferences.locked {
-                let _ = apply_lock(app.handle(), true);
-            }
-            if let Some(window) = app.get_webview_window("widget") {
-                let _ = window.set_size(LogicalSize::new(112.0, 32.0));
-                let _ = window.set_always_on_top(preferences.always_on_top);
-            }
+            desktop::apply_preferences(app.handle(), &preferences)?;
             if needs_setup {
                 let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move { let _ = open_settings(handle).await; });
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_settings(handle).await;
+                });
             }
             Ok(())
         })
@@ -696,36 +690,29 @@ pub fn run() {
             check_quota_settings,
             open_settings,
             show_widget_menu,
+            desktop::resize_widget,
         ])
         .on_tray_icon_event(|app, event| {
             if let TrayIconEvent::Click {
-                rect,
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } = event
             {
-                if let Some(window) = app.get_webview_window("widget") {
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    } else {
-                        show_widget_below_tray(&window, rect);
-                    }
-                }
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_settings(handle).await;
+                });
             }
         })
-        .on_window_event(|window, event| {
-            match event {
-                WindowEvent::CloseRequested { api, .. } => {
-                    if window.label() == "widget" {
-                        api.prevent_close();
-                        let _ = window.hide();
-                        let _ = window.set_size(LogicalSize::new(112.0, 32.0));
-                    }
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                if window.label() == "widget" {
+                    api.prevent_close();
+                    let _ = set_display_mode(window.app_handle(), "tray");
                 }
-                _ => {}
             }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("failed to build Quota Float");
