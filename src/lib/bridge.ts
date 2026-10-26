@@ -17,7 +17,7 @@ const mockSnapshot: ProviderSnapshot = {
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
-let previewSettings: QuotaSettingsView = { source: "sub2api", baseUrl: "", quotaWindow: "auto", hasKey: false };
+let previewSettings: QuotaSettingsView = { source: "sub2api", baseUrl: "", quotaWindow: "auto", connectionMode: "direct", hasKey: false };
 
 export async function getQuotaSettings(): Promise<QuotaSettingsView> {
   if (!isTauri()) return { ...previewSettings };

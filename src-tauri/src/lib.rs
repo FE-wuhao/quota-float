@@ -24,6 +24,8 @@ use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
 struct AppState {
     client: reqwest::Client,
+    api_direct_client: reqwest::Client,
+    api_system_client: reqwest::Client,
     preferences: Mutex<WidgetPreferences>,
     preferences_path: PathBuf,
     fetch_lock: tokio::sync::Mutex<()>,
@@ -82,10 +84,24 @@ async fn fetch_current_source(state: &AppState) -> Vec<ProviderSnapshot> {
     let mut snapshot = if settings.source == "codex" {
         codex::fetch_snapshot(&state.client).await
     } else {
-        sub2api::fetch_snapshot(&state.client, &settings, None).await
+        sub2api::fetch_snapshot(api_client(state, &settings), &settings, None).await
     };
     snapshot.scope_id = state.scope_id.load(Ordering::SeqCst);
     vec![snapshot]
+}
+
+fn api_client<'a>(state: &'a AppState, settings: &QuotaSettings) -> &'a reqwest::Client {
+    if settings.connection_mode == "system" { &state.api_system_client } else { &state.api_direct_client }
+}
+
+fn build_api_client(direct: bool) -> reqwest::Client {
+    let builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("QuotaFloat/", env!("CARGO_PKG_VERSION")));
+    let builder = if direct { builder.no_proxy() } else { builder };
+    builder.build().expect("static API client configuration must be valid")
 }
 
 fn load_quota_settings(path: &PathBuf) -> QuotaSettings {
@@ -150,7 +166,7 @@ async fn check_quota_settings(
     Ok(if settings.source == "codex" {
         codex::fetch_snapshot(&state.client).await
     } else {
-        sub2api::fetch_snapshot(&state.client, &settings, key).await
+        sub2api::fetch_snapshot(api_client(&state, &settings), &settings, key).await
     })
 }
 
@@ -630,6 +646,8 @@ pub fn run() {
                 .expect("static HTTP client configuration must be valid");
             app.manage(AppState {
                 client,
+                api_direct_client: build_api_client(true),
+                api_system_client: build_api_client(false),
                 preferences: Mutex::new(preferences.clone()),
                 preferences_path,
                 fetch_lock: tokio::sync::Mutex::new(()),

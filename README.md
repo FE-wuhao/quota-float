@@ -21,6 +21,8 @@ Sub2API 模式通过 `GET /v1/usage` 读取当前 Key 的 `quota` 和 `rate_limi
 
 API Key 保存在系统凭据库（Windows Credential Manager / macOS Keychain），按服务地址隔离。配置文件仅保存来源、服务地址和展示周期。请求不跟随重定向，仅支持 HTTPS（本机地址可用 HTTP）。
 
+Sub2API 默认直接连接服务；需要代理的服务可在设置中切换为“跟随系统代理”。切换连接方式不需要重新输入已保存的 Key。网络错误会区分超时、DNS 和证书校验问题；不会跳过 TLS 证书校验。
+
 官方 Codex 模式读取本机现有登录状态，调用 Codex/ChatGPT 额度接口。两种模式都不估算本地 token、不兑换重置机会、不修改服务端额度。
 
 浏览器预览使用示例数据，不保存或发送输入的 Key。真实额度查询和凭据保存需要 Tauri 桌面程序；官方模式还需要本机已登录 Codex Desktop。

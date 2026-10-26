@@ -37,6 +37,7 @@ export interface QuotaSettings {
   source: "sub2api" | "codex";
   baseUrl: string;
   quotaWindow: "auto" | QuotaDetail["window"];
+  connectionMode: "direct" | "system";
 }
 
 export interface QuotaSettingsView extends QuotaSettings { hasKey: boolean }

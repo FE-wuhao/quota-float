@@ -3,6 +3,7 @@ use reqwest::{
     Url,
 };
 use serde_json::Value;
+use std::error::Error;
 
 use crate::models::{ProviderSnapshot, QuotaDetail, QuotaSettings, UsageWindow};
 
@@ -30,6 +31,9 @@ pub fn normalize_settings(mut settings: QuotaSettings) -> Result<QuotaSettings, 
     }
     if !["auto", "total", "5h", "1d", "7d"].contains(&settings.quota_window.as_str()) {
         return Err("请选择有效的额度周期。".into());
+    }
+    if !["direct", "system"].contains(&settings.connection_mode.as_str()) {
+        return Err("请选择有效的连接方式。".into());
     }
     settings.base_url = settings.base_url.trim().trim_end_matches('/').to_string();
     if settings.base_url.len() > 2048 {
@@ -75,6 +79,24 @@ fn transient_failure(message: &str) -> ProviderSnapshot {
     let mut snapshot = failure("unavailable", message);
     snapshot.allow_stale = true;
     snapshot
+}
+
+fn network_failure(error: reqwest::Error) -> ProviderSnapshot {
+    if error.is_timeout() {
+        return transient_failure("额度查询超时，请检查连接方式或稍后重试。");
+    }
+    let mut cause = error.source();
+    while let Some(value) = cause {
+        let description = value.to_string().to_ascii_lowercase();
+        if description.contains("certificate") || description.contains("unknownissuer") {
+            return failure("unavailable", "TLS 证书校验失败，请检查服务证书或切换设置中的连接方式。");
+        }
+        if description.contains("dns") || description.contains("failed to lookup") {
+            return transient_failure("无法解析服务地址，请检查网络和连接方式。");
+        }
+        cause = value.source();
+    }
+    transient_failure("无法连接额度接口，请检查服务地址或切换设置中的连接方式。")
 }
 
 fn parse_detail(value: &Value, window: &str) -> Option<QuotaDetail> {
@@ -205,7 +227,7 @@ pub async fn fetch_snapshot(
         .await;
     let mut response = match response {
         Ok(value) => value,
-        Err(_) => return transient_failure("无法连接额度接口，将自动重试。"),
+        Err(error) => return network_failure(error),
     };
     match response.status().as_u16() {
         200 => {}

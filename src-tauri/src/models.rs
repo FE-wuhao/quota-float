@@ -63,6 +63,7 @@ pub struct QuotaSettings {
     pub source: String,
     pub base_url: String,
     pub quota_window: String,
+    pub connection_mode: String,
 }
 
 impl Default for QuotaSettings {
@@ -71,6 +72,7 @@ impl Default for QuotaSettings {
             source: "sub2api".into(),
             base_url: String::new(),
             quota_window: "auto".into(),
+            connection_mode: "direct".into(),
         }
     }
 }

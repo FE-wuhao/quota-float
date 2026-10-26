@@ -17,7 +17,7 @@ Quota Float stores non-secret settings in its own application config directory:
 - always-on-top state
 - pinned provider
 - auto-rotate interval
-- language, quota source, Sub2API service address, and selected quota period
+- language, quota source, Sub2API service address, selected quota period, and connection mode
 
 Sub2API API keys are stored in Windows Credential Manager or macOS Keychain, with separate entries for each normalized service address. They are not written to settings JSON, browser storage, or logs, and the settings page never reads the stored key back into its input. Replacing the service address requires entering its key again. Closing the settings window clears its input state. Credential entries for previously configured services remain in the OS store until removed there.
 
@@ -30,6 +30,7 @@ The app calls the selected source's quota-related endpoints from the local deskt
 - `https://chatgpt.com/backend-api/wham/usage`
 - `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
 - The configured Sub2API service's `/v1/usage`, using its API key. HTTPS is required except for loopback services; redirects are not followed. “Test query” performs the same read without saving a new configuration.
+- Sub2API connects directly by default. Users can explicitly select the system proxy for services that require it. TLS certificate verification stays enabled in either mode.
 
 No telemetry, analytics, crash reporting, or third-party tracking is included.
 

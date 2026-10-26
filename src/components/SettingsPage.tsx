@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { checkQuotaSettings, getQuotaSettings, isTauri, saveQuotaSettings } from "../lib/bridge";
 import type { ProviderSnapshot, QuotaSettings, QuotaSettingsView } from "../types";
 
-const initial: QuotaSettingsView = { source: "sub2api", baseUrl: "", quotaWindow: "auto", hasKey: false };
+const initial: QuotaSettingsView = { source: "sub2api", baseUrl: "", quotaWindow: "auto", connectionMode: "direct", hasKey: false };
 const labels: Record<string, string> = { total: "总额度", "5h": "5 小时", "1d": "每日", "7d": "每周" };
 function normalizedBase(value: string): string {
   try { return new URL(value.trim()).toString().replace(/\/+$/, "").replace(/\/v1$/, ""); }
@@ -42,7 +42,7 @@ export function SettingsPage() {
       setNotice({ error: true, text: "请填写服务地址和对应的 API Key。" }); return;
     }
     setBusy(action); setNotice(null); setPreview(null);
-    const value: QuotaSettings = { source: settings.source, baseUrl: settings.baseUrl, quotaWindow: settings.quotaWindow };
+    const value: QuotaSettings = { source: settings.source, baseUrl: settings.baseUrl, quotaWindow: settings.quotaWindow, connectionMode: settings.connectionMode };
     try {
       if (action === "check") {
         const result = await checkQuotaSettings(value, apiKey);
@@ -89,6 +89,12 @@ export function SettingsPage() {
                 <option value="auto">自动 · 显示剩余比例最低的限额</option><option value="7d">每周额度</option><option value="5h">5 小时额度</option><option value="1d">每日额度</option><option value="total">总额度</option>
               </select>
               <small>仅展示当前 Key 的独立限额；账户或订阅共享余额不计入。</small>
+            </label>
+            <label className="settings-field">连接方式
+              <select value={settings.connectionMode} onChange={(event) => update({ connectionMode: event.target.value as QuotaSettings["connectionMode"] })}>
+                <option value="direct">直接连接</option><option value="system">跟随系统代理</option>
+              </select>
+              <small>默认直接连接。服务需要代理时，可改为跟随系统代理。</small>
             </label>
           </> : <p className="settings-info">读取本机 Codex 登录账号的官方额度与重置时间。</p>}
           <div className="settings-actions">
