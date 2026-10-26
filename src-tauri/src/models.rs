@@ -109,6 +109,8 @@ pub struct WidgetPreferences {
     pub display_mode: String,
     #[serde(default = "default_font_size")]
     pub font_size: u32,
+    #[serde(default = "default_font_color")]
+    pub font_color: String,
     #[serde(default = "default_opacity")]
     pub opacity: f64,
     #[serde(default = "default_always_on_top")]
@@ -124,6 +126,9 @@ fn default_display_mode() -> String {
 }
 fn default_font_size() -> u32 {
     12
+}
+fn default_font_color() -> String {
+    "#ffffff".into()
 }
 fn default_opacity() -> f64 {
     0.92
@@ -146,6 +151,7 @@ impl Default for WidgetPreferences {
             language: default_language(),
             display_mode: default_display_mode(),
             font_size: default_font_size(),
+            font_color: default_font_color(),
             opacity: default_opacity(),
             show_status: true,
             show_reset_time: false,
@@ -160,6 +166,14 @@ impl WidgetPreferences {
             self.display_mode = default_display_mode();
         }
         self.font_size = self.font_size.clamp(10, 16);
+        if self.font_color.len() != 7
+            || !self.font_color.starts_with('#')
+            || !self.font_color.as_bytes()[1..]
+                .iter()
+                .all(u8::is_ascii_hexdigit)
+        {
+            self.font_color = default_font_color();
+        }
         self.opacity = if self.opacity.is_finite() {
             self.opacity.clamp(0.35, 1.0)
         } else {

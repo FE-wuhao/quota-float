@@ -10,6 +10,11 @@ const sample: ProviderSnapshot = {
   secondaryWindow: null, resetCredits: null, updatedAt: new Date().toISOString(),
 };
 const sampleBalance: ProviderSnapshot = { ...sample, primaryWindow: null, balance: { remaining: 370.46, unit: "USD", scope: "account" } };
+const colorPresets = [
+  { color: "#ffffff", label: "亮白" }, { color: "#ffe066", label: "亮黄" },
+  { color: "#ffb366", label: "橙色" }, { color: "#80c7ff", label: "天蓝" },
+  { color: "#8ed6ac", label: "绿色" },
+];
 
 export function AppearanceSettings() {
   const [preferences, setPreferences] = useState(defaultPreferences);
@@ -44,8 +49,8 @@ export function AppearanceSettings() {
   }}>
     <fieldset disabled={loading || saving}>
       <div className="appearance-preview">
-        {preferences.displayMode === "tray" ? <><span className="tray-preview" aria-label="托盘数字示例">370</span><small>仅托盘 · 桌面不显示悬浮窗，悬停查看完整额度。</small></> : <>
-          <div className="widget-content" style={{ "--widget-font-size": `${preferences.fontSize}px`, "--widget-opacity": preferences.opacity } as CSSProperties}>
+        {preferences.displayMode === "tray" ? <><span className="tray-preview" style={{ color: preferences.fontColor }} aria-label="托盘数字示例">370</span><small>仅托盘 · 桌面不显示悬浮窗，悬停查看完整额度。</small></> : <>
+          <div className="widget-content" style={{ "--widget-font-size": `${preferences.fontSize}px`, "--widget-font-color": preferences.fontColor, "--widget-opacity": preferences.opacity } as CSSProperties}>
             <CompactQuotaCard snapshot={sampleBalance} appearance={preferences} onDrag={() => {}} />
             <CompactQuotaCard snapshot={sample} appearance={preferences} onDrag={() => {}} />
           </div><small>示例：余额 / 剩余比例 · 实际窗口按内容自动缩放</small>
@@ -60,6 +65,14 @@ export function AppearanceSettings() {
       <label className="settings-field"><span>字号 <output>{preferences.fontSize} px</output></span>
         <input aria-label="字号" type="range" min="10" max="16" step="1" value={preferences.fontSize} onChange={(event) => change({ fontSize: Number(event.target.value) })} />
       </label>
+      <div className="settings-field">
+        <label htmlFor="font-color">字体颜色 <output>{preferences.fontColor.toUpperCase()}</output></label>
+        <div className="settings-color-presets">
+          <input id="font-color" type="color" value={preferences.fontColor} onChange={(event) => change({ fontColor: event.target.value })} />
+          {colorPresets.map(({ color, label }) => <button type="button" key={color} aria-label={label} aria-pressed={preferences.fontColor.toLowerCase() === color} title={label} style={{ "--swatch-color": color } as CSSProperties} onClick={() => change({ fontColor: color })}><span /></button>)}
+        </div>
+        <small>应用于悬浮条文字和托盘数字，可选预设或点击色块自定义。状态圆点仍表示额度状态。</small>
+      </div>
       <label className="settings-field"><span>背景不透明度 <output>{Math.round(preferences.opacity * 100)}%</output></span>
         <input aria-label="背景不透明度" type="range" min="35" max="100" step="1" value={Math.round(preferences.opacity * 100)} onChange={(event) => change({ opacity: Number(event.target.value) / 100 })} />
       </label>
@@ -71,7 +84,7 @@ export function AppearanceSettings() {
       <label className="settings-toggle">悬浮条置顶<input type="checkbox" checked={preferences.alwaysOnTop} onChange={(event) => change({ alwaysOnTop: event.target.checked })} /></label>
       <label className="settings-toggle">鼠标穿透（从托盘解除）<input type="checkbox" checked={preferences.locked} onChange={(event) => change({ locked: event.target.checked })} /></label>
       <div className="settings-actions">
-        <button type="button" onClick={() => change({ fontSize: defaultPreferences.fontSize, opacity: defaultPreferences.opacity, showStatus: defaultPreferences.showStatus, showResetTime: defaultPreferences.showResetTime, showRefreshButton: defaultPreferences.showRefreshButton })}>恢复默认外观</button>
+        <button type="button" onClick={() => change({ fontSize: defaultPreferences.fontSize, fontColor: defaultPreferences.fontColor, opacity: defaultPreferences.opacity, showStatus: defaultPreferences.showStatus, showResetTime: defaultPreferences.showResetTime, showRefreshButton: defaultPreferences.showRefreshButton })}>恢复默认外观</button>
         <button type="submit" className="settings-save">{saving ? "正在保存…" : "保存展示设置"}</button>
       </div>
     </fieldset>

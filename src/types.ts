@@ -51,6 +51,7 @@ export interface WidgetPreferences {
   language: Language;
   displayMode: "floating" | "tray";
   fontSize: number;
+  fontColor: string;
   opacity: number;
   showStatus: boolean;
   showResetTime: boolean;

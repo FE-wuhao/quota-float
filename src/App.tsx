@@ -167,7 +167,7 @@ export default function App() {
         });
       }}
     >
-      <div ref={contentRef} className="widget-content" style={{ "--widget-font-size": `${preferences.fontSize}px`, "--widget-opacity": preferences.opacity } as CSSProperties}>{content}</div>
+      <div ref={contentRef} className="widget-content" style={{ "--widget-font-size": `${preferences.fontSize}px`, "--widget-font-color": preferences.fontColor, "--widget-opacity": preferences.opacity } as CSSProperties}>{content}</div>
       {contextMenu ? (
         <div className="widget-context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
           <button role="menuitem" onClick={() => { setContextMenu(null); void openSettings(); }}>设置 / Settings</button>

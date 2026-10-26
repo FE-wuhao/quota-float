@@ -52,7 +52,12 @@ button { font: inherit; }
 .settings-tabs button[aria-selected="true"] { color: #fff; background: #35445b; }
 .appearance-preview { display: grid; justify-items: center; gap: 16px; padding: 22px 12px; margin: 0 0 24px; border: 1px solid #354052; border-radius: 12px; background: #11151c; }
 .appearance-preview > small { color: #94a0b2; font-size: 11px; }
-.tray-preview { display: grid; place-items: center; width: 32px; height: 32px; background: #20252f; color: #8ed6ac; border-radius: 5px; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tray-preview { display: grid; place-items: center; width: 32px; height: 32px; background: #20252f; color: #fff; border-radius: 5px; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.settings-color-presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.settings-color-presets input[type="color"] { width: 44px; min-height: 38px; padding: 3px; cursor: pointer; }
+.settings-color-presets button { display: grid; place-items: center; width: 38px; padding: 0; }
+.settings-color-presets button[aria-pressed="true"] { border-color: #a9cbff; outline: 1px solid #a9cbff; }
+.settings-color-presets button span { width: 18px; height: 18px; border-radius: 50%; background: var(--swatch-color); }
 .appearance-preview .widget-content { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
 .settings-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; color: #d5dce7; font-size: 12px; }
 .settings-toggle input { width: 16px; height: 16px; accent-color: #7eaff7; }
@@ -193,12 +198,12 @@ button { font: inherit; }
 .compact-primary { width: 130px; padding: 9px 12px 7px 14px; }
 .compact-primary--single { width: auto; min-width: 0; height: 100%; display: flex; flex: 1; align-items: center; gap: 5px; padding: 0 6px; }
 .compact-label-row { display: flex; align-items: center; gap: 5px; color: rgba(17,20,27,.58); font-size: 9px; font-weight: 720; letter-spacing: .08em; }
-.compact-reset-time { color: #b9c0ca; font-size: max(9px, calc(var(--widget-font-size, 12px) - 2px)); font-weight: 500; letter-spacing: 0; white-space: nowrap; }
+.compact-reset-time { color: var(--widget-font-color, #fff); font-size: max(9px, calc(var(--widget-font-size, 12px) - 2px)); font-weight: 500; letter-spacing: 0; white-space: nowrap; }
 .compact-status { width: 4px; height: 4px; flex: 0 0 4px; border-radius: 50%; background: #81d5a0; }
 .quota-card--caution .compact-status { background: #f0bb68; }
 .quota-card--critical .compact-status { background: #ff8275; }
 .compact-status--stale { background: #9399a4; box-shadow: none; }
-.compact-primary strong, .compact-weekly strong { display: block; color: #f7f8fa; font-variant-numeric: tabular-nums; letter-spacing: -.055em; line-height: .95; }
+.compact-primary strong, .compact-weekly strong { display: block; color: var(--widget-font-color, #fff); font-variant-numeric: tabular-nums; letter-spacing: -.055em; line-height: .95; }
 .compact-primary--single strong { display: flex; align-items: baseline; margin: 0; font-size: var(--widget-font-size, 12px); font-weight: 600; letter-spacing: -.02em; line-height: 1; white-space: nowrap; }
 .compact-primary--balance strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compact-primary strong small, .compact-weekly strong small { margin-left: 1px; font-size: .8em; font-weight: 500; }
@@ -212,7 +217,7 @@ button { font: inherit; }
 .compact-weekly strong { margin-top: 5px; font-size: 21px; font-weight: 520; }
 .compact-unavailable { min-width: 0; display: flex; flex: 1; align-items: center; gap: 5px; padding: 0 6px; }
 .compact-unavailable > svg { width: 14px; height: 14px; color: #ff7653; }
-.compact-unavailable strong { display: block; overflow: hidden; color: #f7f8fa; font-size: var(--widget-font-size, 12px); text-overflow: ellipsis; white-space: nowrap; }
+.compact-unavailable strong { display: block; overflow: hidden; color: var(--widget-font-color, #fff); font-size: var(--widget-font-size, 12px); text-overflow: ellipsis; white-space: nowrap; }
 .compact-unavailable p { margin: 4px 0 0; color: rgba(17,20,27,.5); font-size: 9px; }
 .compact-refresh-button { width: 20px; align-self: stretch; flex: 0 0 20px; display: grid; place-items: center; padding: 0; border: 0; border-left: 1px solid rgba(255,255,255,.09); color: #aeb6c2; background: transparent; cursor: pointer; }
 .compact-refresh-button:hover { color: #f7f8fa; background: rgba(255,255,255,.07); }

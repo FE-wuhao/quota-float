@@ -37,6 +37,16 @@ struct AppState {
 }
 
 fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
+    let font_color = app
+        .try_state::<AppState>()
+        .and_then(|state| {
+            state
+                .preferences
+                .lock()
+                .ok()
+                .map(|preferences| desktop::font_color(&preferences.font_color))
+        })
+        .unwrap_or([255, 255, 255, 255]);
     if let Some(balance) = snapshots
         .first()
         .and_then(|snapshot| snapshot.balance.as_ref())
@@ -55,11 +65,7 @@ fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
             let _ = tray.set_title(None::<&str>);
             let _ = tray.set_icon(Some(desktop::tray_image(
                 &desktop::balance_digits(balance.remaining),
-                if balance.remaining <= 0.0 {
-                    [255, 130, 117, 255]
-                } else {
-                    [142, 214, 172, 255]
-                },
+                font_color,
             )));
             let _ = tray.set_tooltip(Some(format!("Quota Float · 当前 API Key 对应{scope}余额 {amount}\n单击打开设置，右键切换展示方式")));
         }
@@ -90,11 +96,10 @@ fn update_tray_quota(app: &AppHandle, snapshots: &[ProviderSnapshot]) {
         let digits = window
             .map(|value| format!("{:.0}", value.remaining_percent.clamp(0.0, 100.0)))
             .unwrap_or_else(|| "--".into());
-        let color = match window.map(|value| value.remaining_percent) {
-            Some(value) if value <= 10.0 => [255, 130, 117, 255],
-            Some(value) if value <= 25.0 => [240, 187, 104, 255],
-            Some(_) => [142, 214, 172, 255],
-            None => [166, 175, 190, 255],
+        let color = if window.is_some() {
+            font_color
+        } else {
+            [166, 175, 190, 255]
         };
         let _ = tray.set_icon(Some(desktop::tray_image(&digits, color)));
         let _ = tray.set_tooltip(Some(format!(
@@ -352,28 +357,32 @@ fn persist_preferences<T: serde::Serialize>(path: &PathBuf, value: &T) -> Result
     Ok(())
 }
 
+// Release the cache mutex before native tray calls can wait for the UI thread.
+fn cached_snapshots(state: &AppState, max_age: Option<Duration>) -> Option<Vec<ProviderSnapshot>> {
+    let cache = state.snapshot_cache.lock().ok()?;
+    let (time, values) = cache.as_ref()?;
+    if max_age.is_some_and(|limit| time.elapsed() >= limit) {
+        return None;
+    }
+    Some(values.clone())
+}
+
 #[tauri::command]
 async fn get_snapshots(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<ProviderSnapshot>, String> {
     const CACHE_TTL: Duration = Duration::from_secs(30);
-    if let Ok(cache) = state.snapshot_cache.lock() {
-        if let Some((time, values)) = &*cache {
-            if time.elapsed() < CACHE_TTL {
-                update_tray_quota(&app, values);
-                return Ok(values.clone());
-            }
-        }
+    if let Some(values) = cached_snapshots(&state, Some(CACHE_TTL)) {
+        update_tray_quota(&app, &values);
+        return Ok(values);
     }
     let _guard = match state.fetch_lock.try_lock() {
         Ok(guard) => guard,
         Err(_) => {
-            if let Ok(cache) = state.snapshot_cache.lock() {
-                if let Some((_, values)) = &*cache {
-                    update_tray_quota(&app, values);
-                    return Ok(values.clone());
-                }
+            if let Some(values) = cached_snapshots(&state, None) {
+                update_tray_quota(&app, &values);
+                return Ok(values);
             }
             return Ok(vec![ProviderSnapshot::failure(
                 "unavailable",
@@ -381,13 +390,9 @@ async fn get_snapshots(
             )]);
         }
     };
-    if let Ok(cache) = state.snapshot_cache.lock() {
-        if let Some((time, values)) = &*cache {
-            if time.elapsed() < CACHE_TTL {
-                update_tray_quota(&app, values);
-                return Ok(values.clone());
-            }
-        }
+    if let Some(values) = cached_snapshots(&state, Some(CACHE_TTL)) {
+        update_tray_quota(&app, &values);
+        return Ok(values);
     }
     let values = fetch_current_source(&state).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
@@ -448,6 +453,14 @@ fn store_preferences(
         }
         let _ = desktop::apply_preferences(app, &previous);
         return Err(error);
+    }
+    let cached = state
+        .snapshot_cache
+        .lock()
+        .ok()
+        .and_then(|cache| cache.as_ref().map(|(_, values)| values.clone()));
+    if let Some(values) = cached {
+        update_tray_quota(app, &values);
     }
     let _ = app.emit("preferences-changed", preferences);
     Ok(())

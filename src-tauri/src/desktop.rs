@@ -89,6 +89,21 @@ pub fn balance_digits(value: f64) -> String {
     }
 }
 
+pub fn font_color(value: &str) -> [u8; 4] {
+    if value.len() != 7
+        || !value.starts_with('#')
+        || !value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+    {
+        return [255, 255, 255, 255];
+    }
+    [
+        u8::from_str_radix(&value[1..3], 16).unwrap_or(255),
+        u8::from_str_radix(&value[3..5], 16).unwrap_or(255),
+        u8::from_str_radix(&value[5..7], 16).unwrap_or(255),
+        255,
+    ]
+}
+
 // At most four bitmap glyphs: Windows scales the icon to its native tray size.
 pub fn tray_image(text: &str, color: [u8; 4]) -> Image<'static> {
     const DIGITS: [[u8; 5]; 10] = [
